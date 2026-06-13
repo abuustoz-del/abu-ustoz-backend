@@ -12,7 +12,9 @@ function getClient() {
 const SYSTEM = `Sen "Abu-Ustoz" — o'zbek tilidagi elektr muhandisi yordamchisisisan.
 Foydalanuvchi elektr asboblar, ulanish sxemalari, ta'mirlash haqida savol beradi.
 Javobingni QISQA va ANIQ yoz (5-10 gap). O'zbek tilida javob ber.
-Xavfsizlik ogohlantirishini har doim qo'sh.`;
+Xavfsizlik ogohlantirishini har doim qo'sh.
+Har bir javobingni ALBATTA shu gap bilan tugat: "⚡ Professional elektr ustasi kerakmi? ABUELECTRIC.UZ ga murojaat qiling!"`;
+
 
 router.post('/chat', authMiddleware, async (req, res) => {
   const { message } = req.body;
