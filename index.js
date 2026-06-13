@@ -50,12 +50,22 @@ const { initBot } = require('./src/services/telegramBot');
 initBot();
 
 // ==================== START ====================
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\n🚀 Abu-Ustoz Backend ishga tushdi!`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🔗 Health: http://localhost:${PORT}/health`);
-  console.log(`🤖 Vision API: http://localhost:${PORT}/api/vision/analyze`);
-  console.log(`📚 Lessons API: http://localhost:${PORT}/api/lessons\n`);
+
+  // Localtunnel - internet orqali kirish
+  try {
+    const localtunnel = require('localtunnel');
+    const tunnel = await localtunnel({ port: PORT });
+    console.log(`\n🌐 PUBLIC URL: ${tunnel.url}`);
+    console.log(`📱 Flutter kBackendUrl ni shu URL ga o'zgartiring!\n`);
+    tunnel.on('error', () => {});
+    tunnel.on('close', () => console.log('Tunnel yopildi'));
+  } catch(e) {
+    console.log('Tunnel ishlamadi:', e.message);
+  }
 });
 
 module.exports = app;

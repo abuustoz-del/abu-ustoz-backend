@@ -5,6 +5,7 @@ const db = require('../db/database');
 
 // Flutter app uchun token olish (telegram_id yoki anonim)
 router.post('/flutter-token', (req, res) => {
+  console.log('[AUTH] POST /flutter-token, body:', JSON.stringify(req.body), 'headers:', req.headers['content-type']);
   const { telegram_id, name } = req.body;
 
   let user;

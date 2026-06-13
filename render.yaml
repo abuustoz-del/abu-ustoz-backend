@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: abu-ustoz-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
