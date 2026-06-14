@@ -52,7 +52,7 @@ initBot();
 
 // ==================== START ====================
 app.listen(PORT, async () => {
-  console.log(`\n🚀 Abu-Ustoz Backend ishga tushdi!`);
+  console.log(`\n🚀 Abu-Ustoz Backend v2 ishga tushdi!`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🔗 Health: http://localhost:${PORT}/health`);
 
