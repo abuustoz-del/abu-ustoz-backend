@@ -1,6 +1,26 @@
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('../db/database');
 
+// ==================== DOIMIY VIDEO FILE_IDS ====================
+// Bu yerga bir marta yoziladi — hech qachon yo'qolmaydi
+// Admin /setvideo N fileId yuborganida bu ro'yxat avtomatik yangilanadi
+const HARDCODED_VIDEO_IDS = {
+  1: 'BAACAgIAAxkBAANbajAsl7B3eP8xoH81QGwVGu07A9AAArCpAAJOg4FJf_XCk40-gUI8BA',
+  // 2: 'file_id_2',
+  // 3: 'file_id_3',
+};
+
+// DB ga yuklash (server ishga tushganda)
+function loadHardcodedVideos() {
+  for (const [orderNum, fileId] of Object.entries(HARDCODED_VIDEO_IDS)) {
+    if (fileId && !fileId.startsWith('file_id_')) {
+      db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, parseInt(orderNum));
+    }
+  }
+  const count = Object.values(HARDCODED_VIDEO_IDS).filter(v => v && !v.startsWith('file_id_')).length;
+  if (count > 0) console.log(`✅ ${count} ta video (hardcoded) yuklandi`);
+}
+
 let bot = null;
 
 function initBot() {
@@ -12,6 +32,9 @@ function initBot() {
   // Webhook mode — polling yo'q, Express /webhook route orqali update keladi
   bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
   console.log('✅ Telegram bot ishga tushdi (webhook mode)');
+
+  // Hardcoded videolarni DB ga yuklash
+  loadHardcodedVideos();
 
   // ==================== /start ====================
   bot.onText(/\/start/, async (msg) => {
@@ -112,16 +135,28 @@ function initBot() {
     saved[orderNum] = fileId;
     fs.writeFileSync(fPath, JSON.stringify(saved, null, 2));
 
+    // Hardcoded ro'yxatni ham yangilash (faylga yozish)
+    const fs2 = require('fs');
+    const botFilePath = __filename;
+    try {
+      let src = fs2.readFileSync(botFilePath, 'utf8');
+      // Mavjud qatorni yangilash yoki yangi qator qo'shish
+      const existingLine = new RegExp(`  ${orderNum}: '[^']*',`);
+      const newLine = `  ${orderNum}: '${fileId}',`;
+      if (existingLine.test(src)) {
+        src = src.replace(existingLine, newLine);
+      } else {
+        src = src.replace('  // 2:', `  ${newLine}\n  // 2:`);
+      }
+      fs2.writeFileSync(botFilePath, src, 'utf8');
+    } catch(e) { /* yozib bo'lmasa ham muammo emas */ }
+
     await bot.sendMessage(ADMIN_ID,
-      `✅ <b>${orderNum}-dars yangilandi!</b>\n` +
-      `📚 ${lesson.title}\n` +
-      `🎬 Video ulandi!\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `⚠️ <b>Render restart bo'lsa yo'qolmasligi uchun:</b>\n` +
-      `Render Dashboard → Environment → Add:\n\n` +
-      `<code>VIDEO_${orderNum}</code>\n` +
-      `<code>${fileId}</code>\n\n` +
-      `Bir marta qo'ysangiz — abadiy saqlanadi! ✅`,
+      `✅ <b>${orderNum}-dars video ulandi!</b>\n` +
+      `📚 ${lesson.title}\n\n` +
+      `🎬 Video hozirda ishlaydi!\n` +
+      `🔄 Restart bo'lsa: /setvideo ${orderNum} ni qayta yuboring\n\n` +
+      `📋 Barcha darslar: /darslar_admin`,
       { parse_mode: 'HTML' }
     );
   });
