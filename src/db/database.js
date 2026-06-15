@@ -138,15 +138,34 @@ if (lessonCount.c === 0) {
   console.log('✅ Sample data inserted');
 }
 
-// Restart bo'lganda file_ids.json dan video_file_id larni qayta yuklash
+// ==================== VIDEO FILE_ID YUKLASH ====================
+// 1-usul: Render environment variables dan (VIDEO_1, VIDEO_2, ...)
+//         Bu DOIMIY — Render restart bo'lsa ham saqlanadi
+let envCount = 0;
+for (let i = 1; i <= 20; i++) {
+  const fileId = process.env[`VIDEO_${i}`];
+  if (fileId && fileId.trim()) {
+    db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId.trim(), i);
+    envCount++;
+  }
+}
+if (envCount > 0) console.log(`✅ ${envCount} ta video ENV dan yuklandi (VIDEO_1...VIDEO_${envCount})`);
+
+// 2-usul: file_ids.json dan (agar ENV da yo'q bo'lsa)
 try {
   const fPath = path.join(__dirname, '../../file_ids.json');
   if (fs.existsSync(fPath)) {
     const saved = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+    let jsonCount = 0;
     for (const [orderNum, fileId] of Object.entries(saved)) {
-      db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, parseInt(orderNum));
+      const n = parseInt(orderNum);
+      // Faqat ENV da yo'q bo'lsa JSON dan olamiz
+      if (!process.env[`VIDEO_${n}`]) {
+        db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, n);
+        jsonCount++;
+      }
     }
-    console.log(`✅ ${Object.keys(saved).length} ta video file_id yuklandi`);
+    if (jsonCount > 0) console.log(`✅ ${jsonCount} ta video JSON dan yuklandi`);
   }
 } catch (e) {
   console.log('file_ids.json yuklanmadi:', e.message);

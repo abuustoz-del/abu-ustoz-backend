@@ -103,7 +103,7 @@ function initBot() {
 
     db.prepare('UPDATE lessons SET video_file_id = ? WHERE id = ?').run(fileId, lesson.id);
 
-    // file_ids.json ga ham saqlaymiz (Render restart bo'lsa qayta yuklanadi)
+    // file_ids.json ga ham saqlaymiz
     const fs = require('fs');
     const path = require('path');
     const fPath = path.join(__dirname, '../../file_ids.json');
@@ -113,8 +113,15 @@ function initBot() {
     fs.writeFileSync(fPath, JSON.stringify(saved, null, 2));
 
     await bot.sendMessage(ADMIN_ID,
-      `✅ <b>${orderNum}-dars yangilandi!</b>\n📚 ${lesson.title}\n🎬 Video ulandi!\n\n` +
-      `Jami: ${Object.keys(saved).length} ta video saqlandi.`,
+      `✅ <b>${orderNum}-dars yangilandi!</b>\n` +
+      `📚 ${lesson.title}\n` +
+      `🎬 Video ulandi!\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `⚠️ <b>Render restart bo'lsa yo'qolmasligi uchun:</b>\n` +
+      `Render Dashboard → Environment → Add:\n\n` +
+      `<code>VIDEO_${orderNum}</code>\n` +
+      `<code>${fileId}</code>\n\n` +
+      `Bir marta qo'ysangiz — abadiy saqlanadi! ✅`,
       { parse_mode: 'HTML' }
     );
   });
@@ -123,10 +130,28 @@ function initBot() {
   bot.onText(/\/darslar_admin/, async (msg) => {
     if (String(msg.from.id) !== ADMIN_ID) return;
     const lessons = db.prepare('SELECT order_num, title, video_file_id FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
-    const list = lessons.map(l =>
-      `${l.video_file_id ? '✅' : '❌'} ${l.order_num}. ${l.title}`
-    ).join('\n');
-    await bot.sendMessage(ADMIN_ID, `📚 <b>Darslar holati:</b>\n\n${list}`, { parse_mode: 'HTML' });
+    const list = lessons.map(l => {
+      const hasEnv = !!process.env[`VIDEO_${l.order_num}`];
+      const hasDb  = !!l.video_file_id;
+      const icon = hasDb ? '✅' : '❌';
+      const envTag = hasEnv ? ' [ENV✓]' : ' [ENV❌]';
+      return `${icon} ${l.order_num}. ${l.title}${envTag}`;
+    }).join('\n');
+    await bot.sendMessage(ADMIN_ID,
+      `📚 <b>Darslar holati:</b>\n\n${list}\n\n` +
+      `✅ = video bor | ENV✓ = Render'da doimiy saqlangan\n` +
+      `ENV❌ = Render restart bo'lsa yo'qoladi!`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // /resetme - foydalanuvchi o'z progressini tozalaydi (test uchun)
+  bot.onText(/\/resetme/, async (msg) => {
+    const chatId = msg.chat.id;
+    const user = getUserByTgId(msg.from.id);
+    if (!user) { await bot.sendMessage(chatId, 'Avval /start bosing'); return; }
+    db.prepare('DELETE FROM user_progress WHERE user_id = ?').run(user.id);
+    await bot.sendMessage(chatId, '🔄 Progressingiz tozalandi. /darslar bosing.');
   });
 
   // ==================== CALLBACK HANDLER ====================
