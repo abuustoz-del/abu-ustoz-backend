@@ -138,4 +138,18 @@ if (lessonCount.c === 0) {
   console.log('✅ Sample data inserted');
 }
 
+// Restart bo'lganda file_ids.json dan video_file_id larni qayta yuklash
+try {
+  const fPath = path.join(__dirname, '../../file_ids.json');
+  if (fs.existsSync(fPath)) {
+    const saved = JSON.parse(fs.readFileSync(fPath, 'utf8'));
+    for (const [orderNum, fileId] of Object.entries(saved)) {
+      db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, parseInt(orderNum));
+    }
+    console.log(`✅ ${Object.keys(saved).length} ta video file_id yuklandi`);
+  }
+} catch (e) {
+  console.log('file_ids.json yuklanmadi:', e.message);
+}
+
 module.exports = db;

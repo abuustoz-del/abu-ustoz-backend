@@ -9,19 +9,15 @@ function initBot() {
     return null;
   }
 
-  const webhookUrl = process.env.RENDER_EXTERNAL_URL
-    ? `${process.env.RENDER_EXTERNAL_URL}/webhook`
-    : null;
+  // Webhook mode — Render uxlab qolsa ham xabarlar keladi
+  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { webHook: { port: false } });
 
-  if (webhookUrl) {
-    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { webHook: { port: false } });
-    bot.setWebHook(webhookUrl).then(() => {
-      console.log(`✅ Webhook o'rnatildi: ${webhookUrl}`);
-    });
-  } else {
-    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-  }
-  console.log('✅ Telegram bot ishga tushdi');
+  const WEBHOOK_URL = 'https://abu-ustoz-backend.onrender.com/webhook';
+  bot.setWebHook(WEBHOOK_URL).then(() => {
+    console.log(`✅ Webhook: ${WEBHOOK_URL}`);
+  }).catch(e => console.log('Webhook xato:', e.message));
+
+  console.log('✅ Telegram bot webhook mode da ishga tushdi');
 
   // ==================== /start ====================
   bot.onText(/\/start/, async (msg) => {
@@ -111,8 +107,19 @@ function initBot() {
     }
 
     db.prepare('UPDATE lessons SET video_file_id = ? WHERE id = ?').run(fileId, lesson.id);
+
+    // file_ids.json ga ham saqlaymiz (Render restart bo'lsa qayta yuklanadi)
+    const fs = require('fs');
+    const path = require('path');
+    const fPath = path.join(__dirname, '../../file_ids.json');
+    let saved = {};
+    try { saved = JSON.parse(fs.readFileSync(fPath, 'utf8')); } catch {}
+    saved[orderNum] = fileId;
+    fs.writeFileSync(fPath, JSON.stringify(saved, null, 2));
+
     await bot.sendMessage(ADMIN_ID,
-      `✅ <b>${orderNum}-dars yangilandi!</b>\n📚 ${lesson.title}\n🎬 Video ulandi!`,
+      `✅ <b>${orderNum}-dars yangilandi!</b>\n📚 ${lesson.title}\n🎬 Video ulandi!\n\n` +
+      `Jami: ${Object.keys(saved).length} ta video saqlandi.`,
       { parse_mode: 'HTML' }
     );
   });
