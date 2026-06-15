@@ -47,8 +47,17 @@ app.get('/health', (req, res) => {
 });
 
 // ==================== TELEGRAM BOT ====================
-const { initBot } = require('./src/services/telegramBot');
+const { initBot, getBot } = require('./src/services/telegramBot');
 initBot();
+
+// Webhook endpoint — Telegram xabarlarini qabul qilish
+app.post('/webhook', (req, res) => {
+  const bot = getBot();
+  if (bot) {
+    bot.processUpdate(req.body);
+  }
+  res.sendStatus(200);
+});
 
 // ==================== START ====================
 app.listen(PORT, async () => {

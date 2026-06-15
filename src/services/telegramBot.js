@@ -9,7 +9,18 @@ function initBot() {
     return null;
   }
 
-  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+  const webhookUrl = process.env.RENDER_EXTERNAL_URL
+    ? `${process.env.RENDER_EXTERNAL_URL}/webhook`
+    : null;
+
+  if (webhookUrl) {
+    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { webHook: { port: false } });
+    bot.setWebHook(webhookUrl).then(() => {
+      console.log(`✅ Webhook o'rnatildi: ${webhookUrl}`);
+    });
+  } else {
+    bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+  }
   console.log('✅ Telegram bot ishga tushdi');
 
   // ==================== /start ====================
@@ -368,4 +379,5 @@ function getAnswerExplanation(q) {
   return `To'g'ri javob: ${q.correct_option}) ${optionTexts[q.correct_option]}`;
 }
 
-module.exports = { initBot };
+function getBot() { return bot; }
+module.exports = { initBot, getBot };
