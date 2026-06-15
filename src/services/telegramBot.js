@@ -183,21 +183,21 @@ async function sendLessonList(chatId, user) {
     let canStart = false;
 
     if (!progress) {
-      // Birinchi dars barchaga ochiq
       if (lesson.order_num === 1) {
+        // 1-dars har doim ochiq
         icon = '▶️';
         canStart = true;
-        db.prepare('INSERT OR IGNORE INTO user_progress (user_id, lesson_id, status) VALUES (?, ?, ?)').run(user.id, lesson.id, 'locked');
+        db.prepare('INSERT OR IGNORE INTO user_progress (user_id, lesson_id, status) VALUES (?, ?, ?)').run(user.id, lesson.id, 'watching');
       }
     } else {
-      if (progress.status === 'completed') icon = '✅';
+      if (progress.status === 'completed') { icon = '✅'; canStart = true; }
       else if (progress.status === 'locked') { icon = '🔒'; canStart = false; }
       else { icon = '▶️'; canStart = true; }
     }
 
     text += `${icon} ${lesson.order_num}. ${lesson.title}\n`;
 
-    if (canStart || (progress && progress.status !== 'locked')) {
+    if (canStart) {
       buttons.push([{ text: `${icon} ${lesson.order_num}. ${lesson.title}`, callback_data: `lesson:start:${lesson.id}` }]);
     }
   }
