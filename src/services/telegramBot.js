@@ -9,15 +9,30 @@ function initBot() {
     return null;
   }
 
-  // Webhook mode — Render uxlab qolsa ham xabarlar keladi
-  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { webHook: { port: false } });
+  // Webhook mode — polling yo'q, faqat Express orqali update qabul qilinadi
+  bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN);
 
   const WEBHOOK_URL = 'https://abu-ustoz-backend.onrender.com/webhook';
-  bot.setWebHook(WEBHOOK_URL).then(() => {
-    console.log(`✅ Webhook: ${WEBHOOK_URL}`);
-  }).catch(e => console.log('Webhook xato:', e.message));
+  // Telegram ga webhook o'rnatamiz (message va callback_query ikkalasi ham)
+  const https = require('https');
+  const body = JSON.stringify({
+    url: WEBHOOK_URL,
+    allowed_updates: ['message', 'callback_query']
+  });
+  const req = https.request({
+    hostname: 'api.telegram.org',
+    path: `/bot${process.env.TELEGRAM_BOT_TOKEN}/setWebhook`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, res => {
+    let d = '';
+    res.on('data', c => d += c);
+    res.on('end', () => console.log('✅ Webhook:', JSON.parse(d).description));
+  });
+  req.write(body);
+  req.end();
 
-  console.log('✅ Telegram bot webhook mode da ishga tushdi');
+  console.log('✅ Telegram bot ishga tushdi (webhook mode)');
 
   // ==================== /start ====================
   bot.onText(/\/start/, async (msg) => {
