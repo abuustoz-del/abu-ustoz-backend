@@ -58,6 +58,64 @@ function initBot() {
     await sendLessonList(chatId, user);
   });
 
+  // ==================== ADMIN VIDEO HANDLER ====================
+  // Admin video yuborganda file_id va dars raqamini ko'rsatadi
+  const ADMIN_ID = '2107969128';
+
+  bot.on('video', async (msg) => {
+    if (String(msg.from.id) !== ADMIN_ID) return; // Faqat admin uchun
+    const fileId = msg.video.file_id;
+    const duration = msg.video.duration;
+    const caption = msg.caption || '';
+
+    // Dars raqamini caption dan olish (masalan: "1" yoki "dars 3")
+    const num = caption.match(/\d+/)?.[0] || '?';
+
+    // Bazadagi darslarni ko'rsatish
+    const lessons = db.prepare('SELECT id, order_num, title FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
+    let lessonsList = lessons.map(l =>
+      `${l.order_num}. ${l.title} (id=${l.id})${l.order_num == num ? ' ← BU DARS' : ''}`
+    ).join('\n');
+
+    await bot.sendMessage(ADMIN_ID,
+      `📹 <b>Video qabul qilindi!</b>\n\n` +
+      `🔑 <code>file_id: ${fileId}</code>\n` +
+      `⏱ Davomiylik: ${duration} sek\n\n` +
+      `📚 Darslar:\n${lessonsList}\n\n` +
+      `✅ Ulash uchun:\n<code>/setvideo ${num} ${fileId}</code>`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // /setvideo komandasi: /setvideo 1 BAACAgI...
+  bot.onText(/\/setvideo (\d+) (.+)/, async (msg, match) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const orderNum = parseInt(match[1]);
+    const fileId = match[2].trim();
+
+    const lesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum);
+    if (!lesson) {
+      await bot.sendMessage(ADMIN_ID, `❌ ${orderNum}-dars topilmadi!`);
+      return;
+    }
+
+    db.prepare('UPDATE lessons SET video_file_id = ? WHERE id = ?').run(fileId, lesson.id);
+    await bot.sendMessage(ADMIN_ID,
+      `✅ <b>${orderNum}-dars yangilandi!</b>\n📚 ${lesson.title}\n🎬 Video ulandi!`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // /darslar_admin - barcha darslarni video holati bilan ko'rish
+  bot.onText(/\/darslar_admin/, async (msg) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const lessons = db.prepare('SELECT order_num, title, video_file_id FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
+    const list = lessons.map(l =>
+      `${l.video_file_id ? '✅' : '❌'} ${l.order_num}. ${l.title}`
+    ).join('\n');
+    await bot.sendMessage(ADMIN_ID, `📚 <b>Darslar holati:</b>\n\n${list}`, { parse_mode: 'HTML' });
+  });
+
   // ==================== CALLBACK HANDLER ====================
   bot.on('callback_query', async (query) => {
     const chatId = query.message.chat.id;
