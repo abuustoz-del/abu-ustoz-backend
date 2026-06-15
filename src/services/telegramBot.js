@@ -56,7 +56,8 @@ function initBot() {
     const user = getUserByTgId(msg.from.id);
     if (!user) { await bot.sendMessage(chatId, 'Avval /start bosing'); return; }
 
-    await sendLessonList(chatId, user);
+    // Birinchi videoni to'g'ridan-to'g'ri yuborish
+    await sendLessonVideo(chatId, user, 1);
   });
 
   // ==================== ADMIN VIDEO HANDLER ====================
@@ -148,6 +149,34 @@ function initBot() {
       await handleLessonWatched(chatId, user, lessonId, query);
     }
 
+    // next_video:ORDER_NUM
+    else if (data.startsWith('next_video:')) {
+      const orderNum = parseInt(data.split(':')[1]);
+      const prevLesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum - 1);
+
+      if (prevLesson) {
+        const prevProgress = db.prepare('SELECT * FROM user_progress WHERE user_id = ? AND lesson_id = ?').get(user.id, prevLesson.id);
+        const startedAt = prevProgress && prevProgress.watch_started_at ? new Date(prevProgress.watch_started_at + ' UTC') : null;
+        const now = new Date();
+        const diffMs = startedAt ? now - startedAt : Infinity;
+        const diffMin = diffMs / 1000 / 60;
+        const WAIT_MIN = 10;
+
+        if (diffMin < WAIT_MIN) {
+          const remaining = Math.ceil(WAIT_MIN - diffMin);
+          await bot.answerCallbackQuery(query.id, {
+            text: `⏳ Yana ${remaining} daqiqa kuting!`,
+            show_alert: true
+          });
+          return;
+        }
+      }
+
+      await bot.answerCallbackQuery(query.id);
+      await sendLessonVideo(chatId, user, orderNum);
+      return;
+    }
+
     // quiz:answer:LESSONID:QUESTIONID:OPTION
     else if (data.startsWith('quiz:answer:')) {
       const parts = data.split(':');
@@ -169,43 +198,42 @@ function getUserByTgId(telegramId) {
   return db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(String(telegramId));
 }
 
-async function sendLessonList(chatId, user) {
-  const lessons = db.prepare('SELECT * FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
-  const total = lessons.length;
-
-  let text = `📚 *Darslar ro'yxati* (${total} ta)\n\n`;
-  const buttons = [];
-
-  for (const lesson of lessons) {
-    let progress = db.prepare('SELECT * FROM user_progress WHERE user_id = ? AND lesson_id = ?').get(user.id, lesson.id);
-
-    let icon = '🔒';
-    let canStart = false;
-
-    if (!progress) {
-      if (lesson.order_num === 1) {
-        // 1-dars har doim ochiq
-        icon = '▶️';
-        canStart = true;
-        db.prepare('INSERT OR IGNORE INTO user_progress (user_id, lesson_id, status) VALUES (?, ?, ?)').run(user.id, lesson.id, 'watching');
-      }
-    } else {
-      if (progress.status === 'completed') { icon = '✅'; canStart = true; }
-      else if (progress.status === 'locked') { icon = '🔒'; canStart = false; }
-      else { icon = '▶️'; canStart = true; }
-    }
-
-    text += `${icon} ${lesson.order_num}. ${lesson.title}\n`;
-
-    if (canStart) {
-      buttons.push([{ text: `${icon} ${lesson.order_num}. ${lesson.title}`, callback_data: `lesson:start:${lesson.id}` }]);
-    }
+async function sendLessonVideo(chatId, user, orderNum) {
+  const lesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum);
+  if (!lesson) {
+    await bot.sendMessage(chatId, `✅ Barcha darslar tugadi! Siz elektr muhandisi bo'ldingiz! 🏆`);
+    return;
   }
 
-  await bot.sendMessage(chatId, text, {
-    parse_mode: 'Markdown',
-    reply_markup: { inline_keyboard: buttons }
-  });
+  // Progress yozish / yangilash
+  const existing = db.prepare('SELECT * FROM user_progress WHERE user_id = ? AND lesson_id = ?').get(user.id, lesson.id);
+  if (!existing) {
+    db.prepare('INSERT INTO user_progress (user_id, lesson_id, status, watch_started_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)').run(user.id, lesson.id, 'watching');
+  } else {
+    db.prepare('UPDATE user_progress SET status = ?, watch_started_at = CURRENT_TIMESTAMP WHERE user_id = ? AND lesson_id = ?').run('watching', user.id, lesson.id);
+  }
+
+  // Keyingi dars bormi?
+  const nextLesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum + 1);
+  const inlineKeyboard = nextLesson
+    ? [[{ text: `▶️ ${orderNum + 1}-video bu yerda`, callback_data: `next_video:${orderNum + 1}` }]]
+    : [];
+
+  // Video yuborish
+  if (lesson.video_file_id) {
+    await bot.sendVideo(chatId, lesson.video_file_id, {
+      caption: `📹 ${orderNum}-dars: ${lesson.title}`,
+      reply_markup: inlineKeyboard.length ? { inline_keyboard: inlineKeyboard } : undefined
+    });
+  } else {
+    await bot.sendMessage(chatId,
+      `📹 *${orderNum}-dars: ${lesson.title}*\n\n🔗 ${lesson.video_url}\n\n_(Video tez orada yuklanadi)_`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: inlineKeyboard.length ? { inline_keyboard: inlineKeyboard } : undefined
+      }
+    );
+  }
 }
 
 async function handleStartLesson(chatId, user, lessonId, query) {
