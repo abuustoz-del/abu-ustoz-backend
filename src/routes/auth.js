@@ -32,4 +32,21 @@ router.post('/flutter-token', (req, res) => {
   res.json({ token, userId: user.id, name: user.name });
 });
 
+// PRO xarid qilinganida Flutter app xabar yuboradi
+router.post('/pro-purchase', (req, res) => {
+  const { name, flutter_token, plan } = req.body;
+  if (!flutter_token || !plan) return res.status(400).json({ error: 'flutter_token va plan kerak' });
+
+  try {
+    db.prepare(`
+      INSERT INTO pro_purchases (name, flutter_token, plan)
+      VALUES (?, ?, ?)
+      ON CONFLICT(flutter_token) DO UPDATE SET plan = excluded.plan, purchased_at = CURRENT_TIMESTAMP
+    `).run(name || 'Noma\'lum', flutter_token, plan);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

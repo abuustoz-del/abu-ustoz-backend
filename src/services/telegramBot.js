@@ -180,6 +180,64 @@ function initBot() {
     );
   });
 
+  // /pro_users - PRO foydalanuvchilar ro'yxati (faqat admin)
+  bot.onText(/\/pro_users/, async (msg) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const total = db.prepare('SELECT COUNT(*) as c FROM pro_purchases').get();
+    const plan6 = db.prepare("SELECT COUNT(*) as c FROM pro_purchases WHERE plan = '6-month'").get();
+    const plan1  = db.prepare("SELECT COUNT(*) as c FROM pro_purchases WHERE plan = '1-year'").get();
+    const recent = db.prepare('SELECT name, plan, purchased_at FROM pro_purchases ORDER BY purchased_at DESC LIMIT 10').all();
+
+    const recentList = recent.map((r, i) => {
+      const date = r.purchased_at ? r.purchased_at.split('T')[0] : '?';
+      const planLabel = r.plan === '1-year' ? '1 yillik' : '6 oylik';
+      return `${i + 1}. ${r.name} — ${planLabel} (${date})`;
+    }).join('\n');
+
+    await bot.sendMessage(ADMIN_ID,
+      `📊 <b>PRO Foydalanuvchilar</b>\n\n` +
+      `👥 Jami: <b>${total.c} ta</b>\n` +
+      `📅 6 oylik: ${plan6.c} ta\n` +
+      `🏆 1 yillik: ${plan1.c} ta\n\n` +
+      `⏱ <b>Oxirgi 10 ta:</b>\n${recentList || 'Hali yo\'q'}\n\n` +
+      `🎰 Qur\'a tashlash: /qura`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
+  // /qura - tasodifiy g'olib tanlash (faqat admin)
+  bot.onText(/\/qura/, async (msg) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const total = db.prepare('SELECT COUNT(*) as c FROM pro_purchases').get();
+    if (total.c === 0) {
+      await bot.sendMessage(ADMIN_ID, '❌ Hali PRO foydalanuvchi yo\'q!');
+      return;
+    }
+
+    await bot.sendMessage(ADMIN_ID, `🎰 Qur'a boshlanmoqda... (${total.c} ta ishtirokchi)`);
+
+    // 3 marta "tayyorlanish" effekti
+    await new Promise(r => setTimeout(r, 1000));
+    await bot.sendMessage(ADMIN_ID, '🔄 Aralashtirilyapdi...');
+    await new Promise(r => setTimeout(r, 1500));
+    await bot.sendMessage(ADMIN_ID, '⏳ Tanlanyapdi...');
+    await new Promise(r => setTimeout(r, 1000));
+
+    const winner = db.prepare('SELECT * FROM pro_purchases ORDER BY RANDOM() LIMIT 1').get();
+    const date = winner.purchased_at ? winner.purchased_at.split('T')[0] : '?';
+    const planLabel = winner.plan === '1-year' ? '1 yillik' : '6 oylik';
+
+    await bot.sendMessage(ADMIN_ID,
+      `🏆 <b>G'OLIB ANIQLANDI!</b> 🚗\n\n` +
+      `👤 Ism: <b>${winner.name}</b>\n` +
+      `📅 PRO olgan: ${date}\n` +
+      `💳 Tarif: ${planLabel}\n\n` +
+      `🎉 Tabriklaymiz!\n` +
+      `📱 Foydalanuvchi bilan bog\'lanish uchun flutter_token: <code>${winner.flutter_token.slice(0, 20)}...</code>`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
   // /resetme - foydalanuvchi o'z progressini tozalaydi (test uchun)
   bot.onText(/\/resetme/, async (msg) => {
     const chatId = msg.chat.id;

@@ -79,6 +79,14 @@ db.exec(`
     recommended_schematic_id INTEGER,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS pro_purchases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    flutter_token TEXT UNIQUE NOT NULL,
+    plan TEXT NOT NULL,
+    purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ==================== SAMPLE DATA ====================
