@@ -108,7 +108,8 @@ function initBot() {
   });
 
   // === TELEFON RAQAM QABUL QILISH (verify uchun) ===
-  bot.on('contact', async (msg) => {
+  bot.on('message', async (msg) => {
+    if (!msg.contact) return;
     const chatId = msg.chat.id;
     const telegramId = String(msg.from.id);
     const contact = msg.contact;
