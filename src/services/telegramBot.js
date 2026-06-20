@@ -160,7 +160,7 @@ function initBot() {
 
   // ==================== ADMIN VIDEO HANDLER ====================
   // Admin video yuborganda file_id va dars raqamini ko'rsatadi
-  const ADMIN_ID = '2107969128';
+  const ADMIN_ID = process.env.ADMIN_TELEGRAM_ID || '2107969128';
 
   bot.on('video', async (msg) => {
     if (String(msg.from.id) !== ADMIN_ID) return;
@@ -194,24 +194,22 @@ function initBot() {
     // DB ga saqlash
     db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, orderNum);
 
-    // HARDCODED ga ham yozish (Render restart uchun)
+    // file_ids.json ga saqlaymiz (Render restart fallback)
     try {
       const fs2 = require('fs');
-      let src = fs2.readFileSync(__filename, 'utf8');
-      const existingLine = new RegExp(`  ${orderNum}: '[^']*',`);
-      const newLine = `  ${orderNum}: '${fileId}',`;
-      if (existingLine.test(src)) {
-        src = src.replace(existingLine, newLine);
-      } else {
-        src = src.replace('  // 2:', `  ${newLine}\n  // 2:`);
-      }
-      fs2.writeFileSync(__filename, src, 'utf8');
+      const path2 = require('path');
+      const fPath = path2.join(__dirname, '../../file_ids.json');
+      let saved = {};
+      try { saved = JSON.parse(fs2.readFileSync(fPath, 'utf8')); } catch {}
+      saved[orderNum] = fileId;
+      fs2.writeFileSync(fPath, JSON.stringify(saved, null, 2));
     } catch(e) {}
 
     await bot.sendMessage(ADMIN_ID,
       `✅ <b>${orderNum}-dars video ulandi!</b>\n\n` +
       `📚 ${lesson.title}\n` +
-      `🎬 Video hoziroq foydalanuvchilarga ko'rinadi!`,
+      `🎬 Video hoziroq foydalanuvchilarga ko'rinadi!\n\n` +
+      `💡 Doimiy saqlash: Render → ENV → VIDEO_${orderNum} = <code>${fileId}</code>`,
       { parse_mode: 'HTML' }
     );
   });
@@ -231,30 +229,16 @@ function initBot() {
 
     db.prepare('UPDATE lessons SET video_file_id = ? WHERE id = ?').run(fileId, lesson.id);
 
-    // file_ids.json ga ham saqlaymiz
-    const fs = require('fs');
-    const path = require('path');
-    const fPath = path.join(__dirname, '../../file_ids.json');
-    let saved = {};
-    try { saved = JSON.parse(fs.readFileSync(fPath, 'utf8')); } catch {}
-    saved[orderNum] = fileId;
-    fs.writeFileSync(fPath, JSON.stringify(saved, null, 2));
-
-    // Hardcoded ro'yxatni ham yangilash (faylga yozish)
-    const fs2 = require('fs');
-    const botFilePath = __filename;
+    // file_ids.json ga saqlaymiz (Render restart fallback)
     try {
-      let src = fs2.readFileSync(botFilePath, 'utf8');
-      // Mavjud qatorni yangilash yoki yangi qator qo'shish
-      const existingLine = new RegExp(`  ${orderNum}: '[^']*',`);
-      const newLine = `  ${orderNum}: '${fileId}',`;
-      if (existingLine.test(src)) {
-        src = src.replace(existingLine, newLine);
-      } else {
-        src = src.replace('  // 2:', `  ${newLine}\n  // 2:`);
-      }
-      fs2.writeFileSync(botFilePath, src, 'utf8');
-    } catch(e) { /* yozib bo'lmasa ham muammo emas */ }
+      const fs = require('fs');
+      const path = require('path');
+      const fPath = path.join(__dirname, '../../file_ids.json');
+      let saved = {};
+      try { saved = JSON.parse(fs.readFileSync(fPath, 'utf8')); } catch {}
+      saved[orderNum] = fileId;
+      fs.writeFileSync(fPath, JSON.stringify(saved, null, 2));
+    } catch(e) {}
 
     await bot.sendMessage(ADMIN_ID,
       `✅ <b>${orderNum}-dars video ulandi!</b>\n` +

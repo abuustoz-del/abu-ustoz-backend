@@ -32,10 +32,23 @@ router.post('/flutter-token', (req, res) => {
   res.json({ token, userId: user.id, name: user.name });
 });
 
+// Google Play purchase token tekshirish
+router.post('/verify-purchase', (req, res) => {
+  const { purchase_token, product_id } = req.body;
+  if (!purchase_token) return res.status(400).json({ valid: false, error: 'token kerak' });
+  // Token mavjud va uzunligi yetarli bo'lsa valid deb hisoblaymiz
+  // To'liq tekshiruv uchun Google Play Developer API kerak (server key bilan)
+  const valid = typeof purchase_token === 'string' && purchase_token.length > 20;
+  res.json({ valid });
+});
+
 // Telegram verify sessiyasi boshlash
 router.post('/verify-start', (req, res) => {
   const { flutter_token } = req.body;
   if (!flutter_token) return res.status(400).json({ error: 'flutter_token kerak' });
+
+  // 10 daqiqadan eski barcha sessiyalarni tozalash
+  db.prepare("DELETE FROM verify_sessions WHERE created_at < datetime('now', '-10 minutes')").run();
 
   // Eski sessiyani o'chirish
   db.prepare('DELETE FROM verify_sessions WHERE flutter_token = ?').run(flutter_token);
