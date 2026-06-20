@@ -238,6 +238,27 @@ function initBot() {
     );
   });
 
+  // /add_test_pro - test uchun PRO foydalanuvchi qo'shish (faqat admin)
+  bot.onText(/\/add_test_pro(?:\s+(.+))?/, async (msg, match) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const name = match[1] || 'Test Foydalanuvchi';
+    const fakeToken = 'test_' + Date.now();
+    const plan = Math.random() > 0.5 ? '1-year' : '6-month';
+    db.prepare(`
+      INSERT INTO pro_purchases (name, flutter_token, plan)
+      VALUES (?, ?, ?)
+    `).run(name, fakeToken, plan);
+    const total = db.prepare('SELECT COUNT(*) as c FROM pro_purchases').get();
+    await bot.sendMessage(ADMIN_ID,
+      `✅ Test PRO qo'shildi!\n` +
+      `👤 Ism: ${name}\n` +
+      `💳 Tarif: ${plan}\n` +
+      `👥 Jami PRO: ${total.c} ta\n\n` +
+      `Tekshirish: /pro_users`,
+      { parse_mode: 'HTML' }
+    );
+  });
+
   // /resetme - foydalanuvchi o'z progressini tozalaydi (test uchun)
   bot.onText(/\/resetme/, async (msg) => {
     const chatId = msg.chat.id;
