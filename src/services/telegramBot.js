@@ -162,26 +162,55 @@ function initBot() {
   const ADMIN_ID = '2107969128';
 
   bot.on('video', async (msg) => {
-    if (String(msg.from.id) !== ADMIN_ID) return; // Faqat admin uchun
+    if (String(msg.from.id) !== ADMIN_ID) return;
     const fileId = msg.video.file_id;
-    const duration = msg.video.duration;
     const caption = msg.caption || '';
+    const numMatch = caption.match(/\d+/);
 
-    // Dars raqamini caption dan olish (masalan: "1" yoki "dars 3")
-    const num = caption.match(/\d+/)?.[0] || '?';
+    // Caption da raqam yo'q — faqat qabul qilindi deb ayt
+    if (!numMatch) {
+      const lessons = db.prepare('SELECT order_num, title FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
+      const list = lessons.map(l => `${l.order_num}. ${l.title}`).join('\n');
+      await bot.sendMessage(ADMIN_ID,
+        `📹 Video qabul qilindi!\n\n` +
+        `Qaysi darsga ulash kerak?\n` +
+        `Videoni qayta yuboring, caption ga FAQAT RAQAM yozing:\n\n` +
+        `${list}`,
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
 
-    // Bazadagi darslarni ko'rsatish
-    const lessons = db.prepare('SELECT id, order_num, title FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
-    let lessonsList = lessons.map(l =>
-      `${l.order_num}. ${l.title} (id=${l.id})${l.order_num == num ? ' ← BU DARS' : ''}`
-    ).join('\n');
+    // Caption da raqam bor — avtomatik ulash
+    const orderNum = parseInt(numMatch[0]);
+    const lesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum);
+
+    if (!lesson) {
+      await bot.sendMessage(ADMIN_ID, `❌ ${orderNum}-dars topilmadi!`);
+      return;
+    }
+
+    // DB ga saqlash
+    db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, orderNum);
+
+    // HARDCODED ga ham yozish (Render restart uchun)
+    try {
+      const fs2 = require('fs');
+      let src = fs2.readFileSync(__filename, 'utf8');
+      const existingLine = new RegExp(`  ${orderNum}: '[^']*',`);
+      const newLine = `  ${orderNum}: '${fileId}',`;
+      if (existingLine.test(src)) {
+        src = src.replace(existingLine, newLine);
+      } else {
+        src = src.replace('  // 2:', `  ${newLine}\n  // 2:`);
+      }
+      fs2.writeFileSync(__filename, src, 'utf8');
+    } catch(e) {}
 
     await bot.sendMessage(ADMIN_ID,
-      `📹 <b>Video qabul qilindi!</b>\n\n` +
-      `🔑 <code>file_id: ${fileId}</code>\n` +
-      `⏱ Davomiylik: ${duration} sek\n\n` +
-      `📚 Darslar:\n${lessonsList}\n\n` +
-      `✅ Ulash uchun:\n<code>/setvideo ${num} ${fileId}</code>`,
+      `✅ <b>${orderNum}-dars video ulandi!</b>\n\n` +
+      `📚 ${lesson.title}\n` +
+      `🎬 Video hoziroq foydalanuvchilarga ko'rinadi!`,
       { parse_mode: 'HTML' }
     );
   });
