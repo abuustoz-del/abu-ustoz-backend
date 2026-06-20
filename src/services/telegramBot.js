@@ -220,7 +220,8 @@ function initBot() {
   bot.onText(/\/setvideo (\d+) (.+)/, async (msg, match) => {
     if (String(msg.from.id) !== ADMIN_ID) return;
     const orderNum = parseInt(match[1]);
-    const fileId = match[2].trim();
+    // "file_id: BAAC..." yoki "BAAC..." ikkalasini ham qabul qilish
+    const fileId = match[2].trim().replace(/^file_id:\s*/i, '');
 
     const lesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum);
     if (!lesson) {
