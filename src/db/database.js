@@ -84,8 +84,21 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     flutter_token TEXT UNIQUE NOT NULL,
+    phone TEXT,
+    telegram_id TEXT,
     plan TEXT NOT NULL,
     purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS verify_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    flutter_token TEXT NOT NULL,
+    telegram_id TEXT,
+    phone TEXT,
+    tg_name TEXT,
+    verified INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
 

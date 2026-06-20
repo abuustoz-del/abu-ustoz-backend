@@ -37,11 +37,49 @@ function initBot() {
   loadHardcodedVideos();
 
   // ==================== /start ====================
-  bot.onText(/\/start/, async (msg) => {
+  bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
     const telegramId = String(msg.from.id);
     const name = msg.from.first_name || 'Foydalanuvchi';
+    const param = match ? match[1] : null;
 
+    // === TELEGRAM VERIFY (ilova login) ===
+    if (param && param.startsWith('verify_')) {
+      const code = param.replace('verify_', '').toUpperCase();
+      const session = db.prepare('SELECT * FROM verify_sessions WHERE code = ?').get(code);
+
+      if (!session) {
+        await bot.sendMessage(chatId, '❌ Kod noto\'g\'ri yoki muddati o\'tgan. Ilovadan qayta urinib ko\'ring.');
+        return;
+      }
+
+      if (session.verified) {
+        await bot.sendMessage(chatId, '✅ Siz allaqachon tasdiqlangansiz! Ilovaga qayting.');
+        return;
+      }
+
+      // Telefon raqam so'rash
+      await bot.sendMessage(chatId,
+        `👋 Assalomu alaykum, ${name}!\n\n` +
+        `📱 *Abu-Ustoz* ilovasiga kirish uchun\n` +
+        `telefon raqamingizni tasdiqlang:\n\n` +
+        `⬇️ Pastdagi tugmani bosing`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            keyboard: [[{ text: '📱 Telefon raqamni ulashish', request_contact: true }]],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          }
+        }
+      );
+
+      // Kodni vaqtinchalik saqlash (telegram_id bilan bog'lash)
+      db.prepare('UPDATE verify_sessions SET telegram_id = ? WHERE code = ?').run(telegramId, code);
+      return;
+    }
+
+    // === ODDIY /start ===
     let user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(telegramId);
     if (!user) {
       const r = db.prepare('INSERT INTO users (telegram_id, name, username) VALUES (?, ?, ?)').run(
@@ -49,13 +87,9 @@ function initBot() {
       );
       user = db.prepare('SELECT * FROM users WHERE id = ?').get(r.lastInsertRowid);
 
-      // Birinchi darsni ochish
       const firstLesson = db.prepare('SELECT * FROM lessons WHERE order_num = 1 AND is_active = 1').get();
       if (firstLesson) {
-        db.prepare(`
-          INSERT OR IGNORE INTO user_progress (user_id, lesson_id, status)
-          VALUES (?, ?, 'locked')
-        `).run(user.id, firstLesson.id);
+        db.prepare(`INSERT OR IGNORE INTO user_progress (user_id, lesson_id, status) VALUES (?, ?, 'locked')`).run(user.id, firstLesson.id);
       }
     }
 
@@ -70,6 +104,46 @@ function initBot() {
       `✅ Bilimingizni bosqichma-bosqich oshirasiz\n\n` +
       `Boshlash uchun /darslar ni bosing`,
       { parse_mode: 'Markdown' }
+    );
+  });
+
+  // === TELEFON RAQAM QABUL QILISH (verify uchun) ===
+  bot.on('contact', async (msg) => {
+    const chatId = msg.chat.id;
+    const telegramId = String(msg.from.id);
+    const contact = msg.contact;
+
+    // Faqat o'z raqamini yuborgan bo'lsin
+    if (String(contact.user_id) !== telegramId) {
+      await bot.sendMessage(chatId, '❌ Faqat o\'z raqamingizni yuboring!');
+      return;
+    }
+
+    const phone = contact.phone_number.startsWith('+') ? contact.phone_number : '+' + contact.phone_number;
+    const tgName = (msg.from.first_name || '') + (msg.from.last_name ? ' ' + msg.from.last_name : '');
+
+    // Bu telegram_id ga tegishli verify sessiyasini topish
+    const session = db.prepare('SELECT * FROM verify_sessions WHERE telegram_id = ? AND verified = 0 ORDER BY created_at DESC LIMIT 1').get(telegramId);
+
+    if (!session) {
+      await bot.sendMessage(chatId, '❌ Faol sessiya topilmadi. Ilovadan qayta urinib ko\'ring.', {
+        reply_markup: { remove_keyboard: true }
+      });
+      return;
+    }
+
+    // Tasdiqlash
+    db.prepare('UPDATE verify_sessions SET verified = 1, phone = ?, tg_name = ? WHERE id = ?').run(phone, tgName, session.id);
+
+    await bot.sendMessage(chatId,
+      `✅ *Muvaffaqiyatli tasdiqlandi!*\n\n` +
+      `👤 Ism: ${tgName}\n` +
+      `📱 Raqam: ${phone}\n\n` +
+      `🎓 Ilovaga qayting — avtomatik kiradi!`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: { remove_keyboard: true }
+      }
     );
   });
 
@@ -191,7 +265,8 @@ function initBot() {
     const recentList = recent.map((r, i) => {
       const date = r.purchased_at ? r.purchased_at.split('T')[0] : '?';
       const planLabel = r.plan === '1-year' ? '1 yillik' : '6 oylik';
-      return `${i + 1}. ${r.name} — ${planLabel} (${date})`;
+      const phone = r.phone || '📵 raqamsiz';
+      return `${i + 1}. ${r.name} | ${phone} — ${planLabel} (${date})`;
     }).join('\n');
 
     await bot.sendMessage(ADMIN_ID,
@@ -227,13 +302,14 @@ function initBot() {
     const date = winner.purchased_at ? winner.purchased_at.split('T')[0] : '?';
     const planLabel = winner.plan === '1-year' ? '1 yillik' : '6 oylik';
 
+    const winnerPhone = winner.phone || '❌ Telefon raqam yo\'q (eski foydalanuvchi)';
     await bot.sendMessage(ADMIN_ID,
       `🏆 <b>G'OLIB ANIQLANDI!</b> 🚗\n\n` +
       `👤 Ism: <b>${winner.name}</b>\n` +
-      `📅 PRO olgan: ${date}\n` +
-      `💳 Tarif: ${planLabel}\n\n` +
-      `🎉 Tabriklaymiz!\n` +
-      `📱 Foydalanuvchi bilan bog\'lanish uchun flutter_token: <code>${winner.flutter_token.slice(0, 20)}...</code>`,
+      `📱 Telefon: <b>${winnerPhone}</b>\n` +
+      `💳 Tarif: ${planLabel}\n` +
+      `📅 PRO olgan: ${date}\n\n` +
+      `🎉 Ushbu raqamga qo'ng'iroq qiling!`,
       { parse_mode: 'HTML' }
     );
   });
