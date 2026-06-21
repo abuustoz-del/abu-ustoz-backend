@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const db = require('../db/database');
+const { getBot } = require('../services/telegramBot');
+const ADMIN_ID = process.env.ADMIN_TELEGRAM_ID || '2107969128';
 
 // Flutter app uchun token olish (telegram_id yoki anonim)
 router.post('/flutter-token', (req, res) => {
@@ -93,6 +95,18 @@ router.post('/pro-purchase', (req, res) => {
         telegram_id = COALESCE(excluded.telegram_id, telegram_id),
         purchased_at = CURRENT_TIMESTAMP
     `).run(name || 'Noma\'lum', flutter_token, plan, phone || null, telegram_id || null);
+    // Admin ga xabar yuborish
+    try {
+      const bot = getBot();
+      if (bot) {
+        const planLabel = plan === 'monthly' ? '📅 Oylik' : plan === 'yearly' ? '📆 Yillik' : plan;
+        const phoneStr = phone ? `📱 Telefon: ${phone}` : '📱 Telefon: —';
+        const tgStr = telegram_id ? `🆔 Telegram ID: ${telegram_id}` : '🆔 Telegram: —';
+        const msg = `🎉 Yangi PRO xaridchi!\n👤 Ism: ${name || 'Noma\'lum'}\n${phoneStr}\n${tgStr}\n📦 Plan: ${planLabel}`;
+        bot.sendMessage(ADMIN_ID, msg);
+      }
+    } catch (_) {}
+
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

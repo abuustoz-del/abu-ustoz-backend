@@ -59,11 +59,37 @@ app.post('/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
+// ==================== KEEP-ALIVE (Render uyquga ketmaslik uchun) ====================
+// Render free plan da 15 daqiqa faolsiz bo'lsa server uxlaydi.
+// Har 10 daqiqada o'ziga ping yuborib uyquni oldini olamiz.
+function startKeepAlive() {
+  const PUBLIC_URL = process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL;
+  if (!PUBLIC_URL) {
+    console.log('⚠️ Keep-alive: PUBLIC_URL yo\'q, o\'tkazib yuborildi');
+    return;
+  }
+  const http = require('http');
+  const https = require('https');
+  setInterval(() => {
+    const url = new URL(`${PUBLIC_URL}/health`);
+    const client = url.protocol === 'https:' ? https : http;
+    client.get(url.href, (res) => {
+      console.log(`[Keep-alive] ping → ${res.statusCode}`);
+    }).on('error', (e) => {
+      console.log('[Keep-alive] xato:', e.message);
+    });
+  }, 10 * 60 * 1000); // har 10 daqiqada
+  console.log(`✅ Keep-alive yoqildi → ${PUBLIC_URL}/health (har 10 daqiqada)`);
+}
+
 // ==================== START ====================
 app.listen(PORT, async () => {
   console.log(`\n🚀 Abu-Ustoz Backend v2 ishga tushdi!`);
   console.log(`📍 Port: ${PORT}`);
   console.log(`🔗 Health: http://localhost:${PORT}/health`);
+
+  // Keep-alive boshlash
+  startKeepAlive();
 
   // Localtunnel - internet orqali kirish
   try {

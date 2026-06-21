@@ -2,23 +2,54 @@ const TelegramBot = require('node-telegram-bot-api');
 const db = require('../db/database');
 
 // ==================== DOIMIY VIDEO FILE_IDS ====================
-// Bu yerga bir marta yoziladi — hech qachon yo'qolmaydi
-// Admin /setvideo N fileId yuborganida bu ro'yxat avtomatik yangilanadi
+// Eng ishonchli usul: Render → Environment → Add Variable
+//   VIDEO_1 = BAACAgI...   (1-dars file_id)
+//   VIDEO_2 = BAACAgI...   (2-dars file_id)
+//   VIDEO_3 = BAACAgI...   (3-dars file_id)
+// Deploy bo'lsa ham yo'qolmaydi!
+//
+// Qo'shimcha zaxira — kod ichida (ENV dan ustun EMAS):
 const HARDCODED_VIDEO_IDS = {
-  1: 'BAACAgIAAxkBAANbajAsl7B3eP8xoH81QGwVGu07A9AAArCpAAJOg4FJf_XCk40-gUI8BA',
-  // 2: 'file_id_2',
-  // 3: 'file_id_3',
+  // Faqat ENV da bo'lmagan darslar uchun fallback
+  // Misol: 1: 'BAACAgI...',
 };
 
 // DB ga yuklash (server ishga tushganda)
 function loadHardcodedVideos() {
-  for (const [orderNum, fileId] of Object.entries(HARDCODED_VIDEO_IDS)) {
-    if (fileId && !fileId.startsWith('file_id_')) {
-      db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, parseInt(orderNum));
+  let count = 0;
+
+  // 1. RENDER ENV (VIDEO_1, VIDEO_2, ...) — eng ishonchli, deploy da saqlanadi
+  for (let i = 1; i <= 20; i++) {
+    const envId = process.env[`VIDEO_${i}`];
+    if (envId && envId.length > 20) {
+      db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(envId, i);
+      count++;
+      console.log(`✅ VIDEO_${i} ENV dan yuklandi`);
     }
   }
-  const count = Object.values(HARDCODED_VIDEO_IDS).filter(v => v && !v.startsWith('file_id_')).length;
-  if (count > 0) console.log(`✅ ${count} ta video (hardcoded) yuklandi`);
+
+  // 2. HARDCODED_VIDEO_IDS — faqat ENV da bo'lmasa
+  for (const [orderNum, fileId] of Object.entries(HARDCODED_VIDEO_IDS)) {
+    if (fileId && fileId.length > 20 && !process.env[`VIDEO_${orderNum}`]) {
+      db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, parseInt(orderNum));
+      count++;
+    }
+  }
+
+  // 3. file_ids.json — zaxira (Render restart da yo'qoladi, lekin qo'shimcha himoya)
+  try {
+    const fs2 = require('fs'), path2 = require('path');
+    const fPath = path2.join(__dirname, '../../file_ids.json');
+    const saved = JSON.parse(fs2.readFileSync(fPath, 'utf8'));
+    for (const [num, fileId] of Object.entries(saved)) {
+      if (fileId && fileId.length > 20 && !process.env[`VIDEO_${num}`]) {
+        db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, parseInt(num));
+        count++;
+      }
+    }
+  } catch {}
+
+  console.log(`📹 Jami ${count} ta video yuklandi (ENV + hardcoded + json)`);
 }
 
 let bot = null;
@@ -209,7 +240,10 @@ function initBot() {
       `✅ <b>${orderNum}-dars video ulandi!</b>\n\n` +
       `📚 ${lesson.title}\n` +
       `🎬 Video hoziroq foydalanuvchilarga ko'rinadi!\n\n` +
-      `💡 Doimiy saqlash: Render → ENV → VIDEO_${orderNum} = <code>${fileId}</code>`,
+      `⚠️ <b>MUHIM — Doimiy saqlash uchun:</b>\n` +
+      `Render → abu-ustoz-backend → Environment\n` +
+      `Key: <code>VIDEO_${orderNum}</code>\n` +
+      `Value: <code>${fileId}</code>`,
       { parse_mode: 'HTML' }
     );
   });
@@ -243,8 +277,10 @@ function initBot() {
     await bot.sendMessage(ADMIN_ID,
       `✅ <b>${orderNum}-dars video ulandi!</b>\n` +
       `📚 ${lesson.title}\n\n` +
-      `🎬 Video hozirda ishlaydi!\n` +
-      `🔄 Restart bo'lsa: /setvideo ${orderNum} ni qayta yuboring\n\n` +
+      `⚠️ <b>MUHIM — Doimiy saqlash uchun:</b>\n` +
+      `Render → abu-ustoz-backend → Environment\n` +
+      `Key: <code>VIDEO_${orderNum}</code>\n` +
+      `Value: <code>${fileId}</code>\n\n` +
       `📋 Barcha darslar: /darslar_admin`,
       { parse_mode: 'HTML' }
     );
@@ -348,6 +384,27 @@ function initBot() {
       `Tekshirish: /pro_users`,
       { parse_mode: 'HTML' }
     );
+  });
+
+  // /getids - DB dagi barcha video file_id larini ko'rsatish (admin uchun)
+  bot.onText(/\/getids/, async (msg) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const lessons = db.prepare('SELECT order_num, title, video_file_id FROM lessons WHERE is_active = 1 ORDER BY order_num').all();
+    let text = '📋 <b>Video File IDlar (Render ENV uchun):</b>\n\n';
+    for (const l of lessons) {
+      const envId = process.env[`VIDEO_${l.order_num}`];
+      if (l.video_file_id) {
+        text += `✅ <b>${l.order_num}-dars:</b> ${l.title}\n`;
+        text += `Key: <code>VIDEO_${l.order_num}</code>\n`;
+        text += `Value: <code>${l.video_file_id}</code>\n`;
+        if (envId) text += `[ENV da saqlangan ✅]\n`;
+        else text += `[ENV da YO'Q ⚠️ — Render ga qo'shing!]\n`;
+        text += '\n';
+      } else {
+        text += `❌ <b>${l.order_num}-dars:</b> ${l.title} — video yo'q\n\n`;
+      }
+    }
+    await bot.sendMessage(ADMIN_ID, text, { parse_mode: 'HTML' });
   });
 
   // /resetme - foydalanuvchi o'z progressini tozalaydi (test uchun)
