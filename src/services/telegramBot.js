@@ -10,8 +10,9 @@ const db = require('../db/database');
 //
 // Qo'shimcha zaxira — kod ichida (ENV dan ustun EMAS):
 const HARDCODED_VIDEO_IDS = {
-  // Faqat ENV da bo'lmagan darslar uchun fallback
-  // Misol: 1: 'BAACAgI...',
+  1: 'BAACAgIAAxkBAAO9ajeoa8E85SjL1UHllL2zbP4m-AEAAraYAALM28FJyKOH9tTPt0g8BA',
+  2: 'BAACAgIAAxkBAAPHajfLlrmVIf9EgN901kC23YSuPKAAAlegAAI2rLlJiMGjUkI5PJ08BA',
+  3: 'BAACAgIAAxkBAAPJajfL0tw582hW66I2jsTucykUZN0AAlugAAI2rLlJuTWnRgmXrN48BA',
 };
 
 // DB ga yuklash (server ishga tushganda)
