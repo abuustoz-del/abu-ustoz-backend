@@ -117,6 +117,11 @@ if (lessonCount.c === 0) {
     ['Rozetka va kalitlar', 'Rozetka va kalit o\'rnatish, ulanish tartibi', 'https://t.me/c/placeholder/3', 3, 180],
     ['Zamin (Zazemlenie)', 'Zazemlenie nima, nima uchun kerak, qanday o\'rnatiladi', 'https://t.me/c/placeholder/4', 4, 120],
     ['UZO va Avtomat', 'Himoya qurilmalari: UZO, avtomat, diffavtomat farqi', 'https://t.me/c/placeholder/5', 5, 200],
+    ['Elektr щit (taqsimlagich)', 'Uy щiti: avtomat, UZO, nol shinasi ulash tartibi', 'https://t.me/c/placeholder/6', 6, 180],
+    ['Chiroq va lyustra ulash', 'Shiftga chiroq, lyustra, spot ulash usullari', 'https://t.me/c/placeholder/7', 7, 150],
+    ['Yerga ulash va sinovlar', 'Montaj tugagach elektr o\'lchov asboblari bilan tekshirish', 'https://t.me/c/placeholder/8', 8, 200],
+    ['3-fazali elektr', '3-fazali tok, motor ulash, faza balansı', 'https://t.me/c/placeholder/9', 9, 220],
+    ['Amaliy montaj loyihasi', 'Xona elektr tarmog\'ini to\'liq o\'rnatish amaliyoti', 'https://t.me/c/placeholder/10', 10, 300],
   ];
 
   for (const l of lessons) insertLesson.run(...l);
@@ -157,6 +162,22 @@ if (lessonCount.c === 0) {
   for (const s of schematics) insertS.run(...s);
 
   console.log('✅ Sample data inserted');
+}
+
+// ==================== YANGI DARSLAR QO'SHISH (migration) ====================
+const extraLessons = [
+  [6, 'Elektr щit (taqsimlagich)', 'Uy щiti: avtomat, UZO, nol shinasi ulash tartibi', 'https://t.me/c/placeholder/6', 180],
+  [7, 'Chiroq va lyustra ulash', 'Shiftga chiroq, lyustra, spot ulash usullari', 'https://t.me/c/placeholder/7', 150],
+  [8, 'Yerga ulash va sinovlar', 'Montaj tugagach elektr o\'lchov asboblari bilan tekshirish', 'https://t.me/c/placeholder/8', 200],
+  [9, '3-fazali elektr', '3-fazali tok, motor ulash, faza balansi', 'https://t.me/c/placeholder/9', 220],
+  [10, 'Amaliy montaj loyihasi', 'Xona elektr tarmog\'ini to\'liq o\'rnatish amaliyoti', 'https://t.me/c/placeholder/10', 300],
+];
+const insertExtra = db.prepare(`
+  INSERT OR IGNORE INTO lessons (order_num, title, description, video_url, duration_seconds)
+  VALUES (?, ?, ?, ?, ?)
+`);
+for (const [num, title, desc, url, dur] of extraLessons) {
+  insertExtra.run(num, title, desc, url, dur);
 }
 
 // ==================== VIDEO FILE_ID YUKLASH ====================
