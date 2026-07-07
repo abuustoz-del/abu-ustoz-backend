@@ -223,6 +223,13 @@ function initBot() {
       return;
     }
 
+    // Caption da raqamdan keyin nom bor bo'lsa — uni ham yangilaymiz
+    // Masalan: "6 Щit montaji - amaliy dars"
+    const customTitle = caption.replace(/^\d+\s*/, '').trim();
+    if (customTitle.length > 2) {
+      db.prepare('UPDATE lessons SET title = ? WHERE order_num = ?').run(customTitle, orderNum);
+    }
+
     // DB ga saqlash
     db.prepare('UPDATE lessons SET video_file_id = ? WHERE order_num = ?').run(fileId, orderNum);
 
