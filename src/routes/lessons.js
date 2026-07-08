@@ -3,6 +3,13 @@ const router = express.Router();
 const db = require('../db/database');
 const authMiddleware = require('../middleware/auth');
 
+// GET /api/lessons/count — DB dagi darslar soni (public, no auth)
+router.get('/count', (req, res) => {
+  const c = db.prepare('SELECT COUNT(*) as cnt FROM lessons').get();
+  const list = db.prepare('SELECT order_num, title FROM lessons ORDER BY order_num').all();
+  res.json({ count: c.cnt, lessons: list });
+});
+
 // GET /api/lessons — barcha darslar + foydalanuvchi progressi
 router.get('/', authMiddleware, (req, res) => {
   const userId = req.user.userId;
