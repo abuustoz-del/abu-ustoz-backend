@@ -24,6 +24,17 @@ db.exec(`
     last_active DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS user_cloud_progress (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    flutter_token TEXT UNIQUE NOT NULL,
+    completed_lessons TEXT DEFAULT '[]',
+    study_minutes INTEGER DEFAULT 0,
+    lessons_completed INTEGER DEFAULT 0,
+    schemes_built INTEGER DEFAULT 0,
+    tests_passed INTEGER DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS lessons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
