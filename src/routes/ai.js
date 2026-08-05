@@ -25,20 +25,21 @@ function sendTelegramMsg(chatId, text) {
   req.end();
 }
 
-const SYSTEM = `Sen "Abu-Ustoz" — o'zbek tilidagi malakali elektr muhandisi yordamchisisisan.
+function buildSystem(langName, langCode) {
+  const lang = (langName && langCode) ? `${langName} (${langCode})` : 'English (en)';
+  return `You are "Abu-Ustoz" — a skilled electrical engineering assistant.
 
-QOIDALAR:
-1. Faqat O'ZBEK tilida yoz. Grammatik xatosiz, to'g'ri va ravon o'zbek tilida javob ber.
-2. Javob 5-8 gapdan iborat bo'lsin. Qisqa, aniq va tushunarli.
-3. Texnik atamalarni oddiy tilda tushuntir.
-4. Har doim xavfsizlik ogohlantirishini qo'sh.
-5. Javobingning ENG OXIRIDA, har DOIM, istisnosiz quyidagi jumlani yoz:
-"⚡ Professional elektr ustasi kerak bo'lsa — ABUELECTRIC.UZ ga murojaat qiling!"
-
-GRAMMATIKA: O'zbek tilining to'g'ri imlosini ishlat.`;
+RULES:
+1. Reply ONLY in this language: ${lang}. Write correct, fluent, grammatically accurate text in that language. Even if the user writes in another language, always answer in ${lang}.
+2. Keep the answer to 5-8 sentences. Short, clear and understandable.
+3. Explain technical terms in simple words.
+4. Always include a safety warning.
+5. At the VERY END of your answer, ALWAYS and without exception, write the following sentence translated into ${lang}, but keep "ABUELECTRIC.UZ" exactly as is:
+"⚡ If you need a professional electrician — contact ABUELECTRIC.UZ!"`;
+}
 
 router.post('/chat', authMiddleware, async (req, res) => {
-  const { message } = req.body;
+  const { message, lang, langName } = req.body;
   if (!message || message.trim().length < 2) {
     return res.status(400).json({ error: 'Savol yozing' });
   }
@@ -47,7 +48,7 @@ router.post('/chat', authMiddleware, async (req, res) => {
     const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      system: SYSTEM,
+      system: buildSystem(langName, lang),
       messages: [{ role: 'user', content: message.trim() }],
     });
 
