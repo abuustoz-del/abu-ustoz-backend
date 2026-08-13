@@ -24,8 +24,9 @@ const PORT = process.env.PORT || 3000;
 
 // ==================== MIDDLEWARE ====================
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Rasm (base64) yuborilganda katta bo'ladi — chegarani oshiramiz (default 100kb)
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ==================== ROUTES ====================
