@@ -2,7 +2,10 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const dbDir = path.join(__dirname, '../../data');
+// Render persistent disk mounted at /var/data — ma'lumot deploy/restart da saqlanadi.
+// Lokal ishga tushirishда /var/data yo'q — eski data/ papkaga tushadi.
+const dbDir = process.env.DATA_DIR
+  || (fs.existsSync('/var/data') ? '/var/data' : path.join(__dirname, '../../data'));
 if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
 
 const db = new Database(path.join(dbDir, 'abu_ustoz.db'));
