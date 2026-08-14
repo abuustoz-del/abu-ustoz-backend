@@ -3,6 +3,25 @@ const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const https = require('https');
 const authMiddleware = require('../middleware/auth');
+const db = require('../db/database');
+
+// Kunlik AI limitlari (suiiste'mol / kutilmagan xarajatdan himoya)
+const CHAT_DAILY_LIMIT = 50;
+const VISION_DAILY_LIMIT = 20;
+
+// Limitni tekshiradi va oshirmagan bo'lsa hisobni +1 qiladi.
+// { ok: true } yoki { ok: false, used, limit } qaytaradi.
+function checkAndBumpAiLimit(userId, kind) {
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+  const col = kind === 'vision' ? 'vision_count' : 'chat_count';
+  const limit = kind === 'vision' ? VISION_DAILY_LIMIT : CHAT_DAILY_LIMIT;
+  db.prepare('INSERT OR IGNORE INTO ai_usage (user_id, day) VALUES (?, ?)').run(userId, day);
+  const row = db.prepare(`SELECT ${col} AS c FROM ai_usage WHERE user_id = ? AND day = ?`).get(userId, day);
+  const used = row ? row.c : 0;
+  if (used >= limit) return { ok: false, used, limit };
+  db.prepare(`UPDATE ai_usage SET ${col} = ${col} + 1 WHERE user_id = ? AND day = ?`).run(userId, day);
+  return { ok: true };
+}
 
 let _client = null;
 function getClient() {
@@ -42,6 +61,11 @@ router.post('/chat', authMiddleware, async (req, res) => {
   const { message, lang, langName } = req.body;
   if (!message || message.trim().length < 2) {
     return res.status(400).json({ error: 'Savol yozing' });
+  }
+
+  const lim = checkAndBumpAiLimit(req.user.userId, 'chat');
+  if (!lim.ok) {
+    return res.status(429).json({ error: `Bugungi limit tugadi (${lim.limit} ta savol). Ertaga qayta urinib ko'ring.` });
   }
 
   try {
@@ -95,6 +119,11 @@ router.post('/vision', authMiddleware, async (req, res) => {
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
   if (!allowed.includes(mt)) {
     return res.status(400).json({ error: 'Rasm formati qo\'llab-quvvatlanmaydi' });
+  }
+
+  const lim = checkAndBumpAiLimit(req.user.userId, 'vision');
+  if (!lim.ok) {
+    return res.status(429).json({ error: `Bugungi rasm tahlili limiti tugadi (${lim.limit} ta). Ertaga qayta urinib ko'ring.` });
   }
 
   const userText = (message && message.trim().length >= 2)

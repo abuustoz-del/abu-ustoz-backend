@@ -183,6 +183,48 @@ function initBot() {
     );
   });
 
+  // ==================== /stats (faqat admin) ====================
+  const STATS_ADMIN_ID = process.env.ADMIN_TELEGRAM_ID || '2107969128';
+  bot.onText(/\/stats/, async (msg) => {
+    const chatId = msg.chat.id;
+    if (String(msg.from.id) !== STATS_ADMIN_ID) return; // faqat admin
+
+    try {
+      const planLabel = (p) => p === '1-month' ? '1 oylik' : p === '6-month' ? '6 oylik' : p === '1-year' ? '1 yillik' : (p || 'nomaʼlum');
+
+      // Yuklanishlar (yangi foydalanuvchilar)
+      const insMonth = db.prepare("SELECT COUNT(*) c FROM users WHERE created_at >= date('now','start of month')").get().c;
+      const insToday = db.prepare("SELECT COUNT(*) c FROM users WHERE date(created_at) = date('now')").get().c;
+      const insTotal = db.prepare('SELECT COUNT(*) c FROM users').get().c;
+
+      // Bu oygi sotuvlar (reja bo'yicha)
+      const buysMonth = db.prepare("SELECT plan, COUNT(*) c FROM pro_purchases WHERE purchased_at >= date('now','start of month') GROUP BY plan").all();
+      const buysMonthTotal = buysMonth.reduce((s, r) => s + r.c, 0);
+      const buysTotal = db.prepare('SELECT COUNT(*) c FROM pro_purchases').get().c;
+
+      let planLines = buysMonth.length
+        ? buysMonth.map(r => `   • ${planLabel(r.plan)}: ${r.c} ta`).join('\n')
+        : '   • —';
+
+      const monthName = new Date().toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+
+      const text =
+        `📊 <b>Abu-Ustoz statistika</b>\n` +
+        `<i>${monthName}</i>\n\n` +
+        `📥 <b>Yuklanishlar (yangi foydalanuvchi):</b>\n` +
+        `   • Bugun: ${insToday} ta\n` +
+        `   • Bu oy: ${insMonth} ta\n` +
+        `   • Jami: ${insTotal} ta\n\n` +
+        `💳 <b>Sotib olishlar (bu oy): ${buysMonthTotal} ta</b>\n` +
+        planLines + `\n\n` +
+        `🏆 <b>Jami PRO xaridchilar: ${buysTotal} ta</b>`;
+
+      await bot.sendMessage(chatId, text, { parse_mode: 'HTML' });
+    } catch (e) {
+      await bot.sendMessage(chatId, '❌ Statistika xatosi: ' + e.message);
+    }
+  });
+
   // ==================== /darslar ====================
   bot.onText(/\/darslar/, async (msg) => {
     const chatId = msg.chat.id;

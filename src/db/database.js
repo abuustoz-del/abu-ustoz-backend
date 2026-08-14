@@ -114,6 +114,14 @@ db.exec(`
     verified INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    user_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    chat_count INTEGER DEFAULT 0,
+    vision_count INTEGER DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+  );
 `);
 
 // ==================== SAMPLE DATA ====================
