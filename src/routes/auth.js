@@ -49,8 +49,8 @@ router.post('/verify-start', (req, res) => {
   const { flutter_token } = req.body;
   if (!flutter_token) return res.status(400).json({ error: 'flutter_token kerak' });
 
-  // 10 daqiqadan eski barcha sessiyalarni tozalash
-  db.prepare("DELETE FROM verify_sessions WHERE created_at < datetime('now', '-10 minutes')").run();
+  // 30 daqiqadan eski barcha sessiyalarni tozalash (foydalanuvchi sekin bo'lsa ham ulgursin)
+  db.prepare("DELETE FROM verify_sessions WHERE created_at < datetime('now', '-30 minutes')").run();
 
   // Eski sessiyani o'chirish
   db.prepare('DELETE FROM verify_sessions WHERE flutter_token = ?').run(flutter_token);

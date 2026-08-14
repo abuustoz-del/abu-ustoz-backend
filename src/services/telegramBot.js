@@ -90,6 +90,11 @@ function initBot() {
         return;
       }
 
+      // MUHIM: telegram_id ni AVVAL bog'laymiz (sendMessage uzilsa ham saqlanib qolsin).
+      // Shu telegram_id ning boshqa eski sessiyalarini tozalaymiz — faqat shu kod qolsin.
+      db.prepare('UPDATE verify_sessions SET telegram_id = NULL WHERE telegram_id = ? AND code != ?').run(telegramId, code);
+      db.prepare('UPDATE verify_sessions SET telegram_id = ? WHERE code = ?').run(telegramId, code);
+
       // Telefon raqam so'rash
       await bot.sendMessage(chatId,
         `👋 Assalomu alaykum, ${name}!\n\n` +
@@ -105,9 +110,6 @@ function initBot() {
           }
         }
       );
-
-      // Kodni vaqtinchalik saqlash (telegram_id bilan bog'lash)
-      db.prepare('UPDATE verify_sessions SET telegram_id = ? WHERE code = ?').run(telegramId, code);
       return;
     }
 
@@ -146,8 +148,9 @@ function initBot() {
     const telegramId = String(msg.from.id);
     const contact = msg.contact;
 
-    // Faqat o'z raqamini yuborgan bo'lsin
-    if (String(contact.user_id) !== telegramId) {
+    // Faqat o'z raqamini yuborgan bo'lsin — lekin user_id kelmasa (ba'zi mijozlarda)
+    // rad etmaymiz, chunki tugma orqali yuborilgan raqam baribir o'ziniki.
+    if (contact.user_id && String(contact.user_id) !== telegramId) {
       await bot.sendMessage(chatId, '❌ Faqat o\'z raqamingizni yuboring!');
       return;
     }
