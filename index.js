@@ -16,6 +16,16 @@ if (fs.existsSync(envPath)) {
   }
 }
 
+// MUHIM: bot sendMessage rad etilsa yoki boshqa async xato bo'lsa —
+// server CRASH bo'lmasin. Aks holda bitta bloklagan foydalanuvchi
+// butun backendni yiqitadi va hamma kira olmay qoladi.
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ UnhandledRejection:', (reason && reason.message) || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ UncaughtException:', (err && err.message) || err);
+});
+
 const express = require('express');
 const cors = require('cors');
 
