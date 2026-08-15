@@ -99,7 +99,7 @@ router.post('/pro-purchase', (req, res) => {
     try {
       const bot = getBot();
       if (bot) {
-        const planLabel = plan === 'monthly' ? '📅 Oylik' : plan === 'yearly' ? '📆 Yillik' : plan;
+        const planLabel = plan === '1-month' ? '📅 1 oylik' : plan === '6-month' ? '🗓 6 oylik' : plan === '1-year' ? '📆 1 yillik' : plan;
         const phoneStr = phone ? `📱 Telefon: ${phone}` : '📱 Telefon: —';
         const tgStr = telegram_id ? `🆔 Telegram ID: ${telegram_id}` : '🆔 Telegram: —';
         const msg = `🎉 Yangi PRO xaridchi!\n👤 Ism: ${name || 'Noma\'lum'}\n${phoneStr}\n${tgStr}\n📦 Plan: ${planLabel}`;
