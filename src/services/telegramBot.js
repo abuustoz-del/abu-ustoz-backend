@@ -553,25 +553,31 @@ async function sendLessonVideo(chatId, user, orderNum) {
     db.prepare('UPDATE user_progress SET status = ?, watch_started_at = CURRENT_TIMESTAMP WHERE user_id = ? AND lesson_id = ?').run('watching', user.id, lesson.id);
   }
 
-  // Keyingi dars bormi?
+  // Keyingi dars bormi? — FAQAT keyingi darsda video bo'lsa "keyingi" tugmasi ko'rsatiladi
+  // (aks holda foydalanuvchi bo'sh darsga tushib "buzuq" deb o'ylaydi)
   const nextLesson = db.prepare('SELECT * FROM lessons WHERE order_num = ? AND is_active = 1').get(orderNum + 1);
-  const inlineKeyboard = nextLesson
+  const nextHasVideo = nextLesson && nextLesson.video_file_id;
+  const inlineKeyboard = nextHasVideo
     ? [[{ text: `▶️ ${orderNum + 1}-video bu yerda`, callback_data: `next_video:${orderNum + 1}` }]]
     : [];
 
-  // Video yuborish
   if (lesson.video_file_id) {
+    // Videosi bor dars — yuboramiz
+    let caption = `📹 ${orderNum}-dars: ${lesson.title}`;
+    if (nextLesson && !nextHasVideo) {
+      caption += `\n\n🎬 Keyingi darslar videosi tayyorlanmoqda — tez orada qo'shiladi!`;
+    }
     await bot.sendVideo(chatId, lesson.video_file_id, {
-      caption: `📹 ${orderNum}-dars: ${lesson.title}`,
+      caption,
       reply_markup: inlineKeyboard.length ? { inline_keyboard: inlineKeyboard } : undefined
     });
   } else {
+    // Videosi hali yo'q dars — buzuq havola O'RNIGA chiroyli xabar
     await bot.sendMessage(chatId,
-      `📹 *${orderNum}-dars: ${lesson.title}*\n\n🔗 ${lesson.video_url}\n\n_(Video tez orada yuklanadi)_`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: inlineKeyboard.length ? { inline_keyboard: inlineKeyboard } : undefined
-      }
+      `📹 *${orderNum}-dars: ${lesson.title}*\n\n` +
+      `🎬 Bu dars videosi hozir tayyorlanmoqda va tez orada qo'shiladi.\n\n` +
+      `Hozircha oldingi darslarni takrorlang yoki *Abu-Ustoz* ilovasidagi amaliy mashqlar va simulyatordan foydalaning. 🔌`,
+      { parse_mode: 'Markdown' }
     );
   }
 }
