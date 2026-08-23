@@ -34,12 +34,19 @@ router.post('/flutter-token', (req, res) => {
   res.json({ token, userId: user.id, name: user.name });
 });
 
-// Google Play purchase token tekshirish
-router.post('/verify-purchase', (req, res) => {
+// Google Play purchase token tekshirish (A2 — server tomonda haqiqiy tekshiruv)
+const googlePlay = require('../services/googlePlay');
+router.post('/verify-purchase', async (req, res) => {
   const { purchase_token, product_id } = req.body;
   if (!purchase_token) return res.status(400).json({ valid: false, error: 'token kerak' });
-  // Token mavjud va uzunligi yetarli bo'lsa valid deb hisoblaymiz
-  // To'liq tekshiruv uchun Google Play Developer API kerak (server key bilan)
+
+  // Service account sozlangan bo'lsa — Google dan HAQIQIY tekshiramiz
+  const gp = await googlePlay.verifySubscription(purchase_token);
+  if (gp.configured) {
+    return res.json({ valid: !!gp.valid, plan: gp.plan || null, state: gp.state || null });
+  }
+
+  // Hali service account yo'q — eski (yumshoq) tekshiruv (buzilmasin)
   const valid = typeof purchase_token === 'string' && purchase_token.length > 20;
   res.json({ valid });
 });
