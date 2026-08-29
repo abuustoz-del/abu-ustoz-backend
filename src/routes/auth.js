@@ -87,6 +87,18 @@ router.get('/verify-status', (req, res) => {
   });
 });
 
+// Ushbu foydalanuvchi (flutter_token) PRO olganmi? — ilova ochilganda tekshiradi
+router.get('/is-pro', (req, res) => {
+  const token = req.query.token;
+  if (!token) return res.json({ pro: false });
+  try {
+    const row = db.prepare('SELECT 1 FROM pro_purchases WHERE flutter_token = ? LIMIT 1').get(token);
+    res.json({ pro: !!row });
+  } catch (e) {
+    res.json({ pro: false });
+  }
+});
+
 // PRO xarid qilinganida Flutter app xabar yuboradi
 router.post('/pro-purchase', (req, res) => {
   const { name, flutter_token, plan, phone, telegram_id } = req.body;
