@@ -87,12 +87,22 @@ router.get('/verify-status', (req, res) => {
   });
 });
 
-// Ushbu foydalanuvchi (flutter_token) PRO olganmi? — ilova ochilganda tekshiradi
+// Ushbu foydalanuvchi PRO olganmi? — ilova ochilganda tekshiradi.
+// Avval flutter_token bo'yicha, topilmasa (masalan ilova qayta o'rnatilgan/
+// ma'lumotlar tozalangan bo'lsa, token yangilanadi) telefon raqami bo'yicha
+// ham qidiramiz — shu bilan haqiqiy PRO xaridor hech qachon "PRO emas" bo'lib qolmaydi.
 router.get('/is-pro', (req, res) => {
   const token = req.query.token;
-  if (!token) return res.json({ pro: false });
+  const phone = req.query.phone;
+  if (!token && !phone) return res.json({ pro: false });
   try {
-    const row = db.prepare('SELECT 1 FROM pro_purchases WHERE flutter_token = ? LIMIT 1').get(token);
+    let row = null;
+    if (token) {
+      row = db.prepare('SELECT 1 FROM pro_purchases WHERE flutter_token = ? LIMIT 1').get(token);
+    }
+    if (!row && phone) {
+      row = db.prepare('SELECT 1 FROM pro_purchases WHERE phone = ? LIMIT 1').get(phone);
+    }
     res.json({ pro: !!row });
   } catch (e) {
     res.json({ pro: false });
