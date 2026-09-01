@@ -439,6 +439,31 @@ function initBot() {
     );
   });
 
+  // /grant_pro +998901234567 6-month - mijoz pul to'lagan lekin tizimda "PRO emas"
+  // bo'lib qolgan hollarda QO'LDA PRO berish (faqat admin). Telefon raqami bo'yicha
+  // qidiriladi (ilova ham is-pro tekshiruvida telefon raqamini fallback sifatida yuboradi).
+  bot.onText(/\/grant_pro\s+(\S+)(?:\s+(\S+))?/, async (msg, match) => {
+    if (String(msg.from.id) !== ADMIN_ID) return;
+    const phone = match[1];
+    const plan = match[2] && ['1-month', '6-month', '1-year'].includes(match[2]) ? match[2] : '6-month';
+    const existing = db.prepare('SELECT * FROM pro_purchases WHERE phone = ?').get(phone);
+    if (existing) {
+      db.prepare('UPDATE pro_purchases SET plan = ?, purchased_at = CURRENT_TIMESTAMP WHERE phone = ?').run(plan, phone);
+      await bot.sendMessage(ADMIN_ID, `🔄 Yangilandi: ${phone} — ${plan}\n(avval ham PRO bazasida bor edi)`);
+      return;
+    }
+    const manualToken = 'manual_' + phone.replace(/\D/g, '') + '_' + Date.now();
+    db.prepare(`
+      INSERT INTO pro_purchases (name, flutter_token, plan, phone)
+      VALUES (?, ?, ?, ?)
+    `).run('Qo\'lda qo\'shildi', manualToken, plan, phone);
+    await bot.sendMessage(ADMIN_ID,
+      `✅ PRO qo'lda berildi!\n📱 Telefon: ${phone}\n💳 Tarif: ${plan}\n\n` +
+      `Mijoz ilovani qayta ochsa (yoki ilovadan chiqib qayta kirsa), PRO avtomatik ko'rinadi ` +
+      `— chunki ilova telefon raqami bo'yicha ham tekshiradi.`
+    );
+  });
+
   // /getids - DB dagi barcha video file_id larini ko'rsatish (admin uchun)
   bot.onText(/\/getids/, async (msg) => {
     if (String(msg.from.id) !== ADMIN_ID) return;
