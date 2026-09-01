@@ -42,11 +42,14 @@ router.post('/verify-purchase', async (req, res) => {
 
   // Service account sozlangan bo'lsa — Google dan HAQIQIY tekshiramiz
   const gp = await googlePlay.verifySubscription(purchase_token);
-  if (gp.configured) {
+  if (gp.configured && gp.valid !== null) {
+    // Google aniq javob berdi (haqiqatan aktiv YOKI haqiqatan bekor/topilmadi)
     return res.json({ valid: !!gp.valid, plan: gp.plan || null, state: gp.state || null });
   }
 
-  // Hali service account yo'q — eski (yumshoq) tekshiruv (buzilmasin)
+  // Google'dan aniq javob kelmadi (tarmoq xatosi/hali indekslanmagan) YOKI
+  // service account hali sozlanmagan — eski (yumshoq) tekshiruv (buzilmasin,
+  // haqiqiy to'lov qilgan mijozni bloklamaymiz)
   const valid = typeof purchase_token === 'string' && purchase_token.length > 20;
   res.json({ valid });
 });

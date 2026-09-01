@@ -63,9 +63,13 @@ async function verifySubscription(purchaseToken) {
     }
     return { configured: true, valid, plan, state };
   } catch (e) {
-    // 400/404 = token noto'g'ri/topilmadi -> valid emas
-    console.error('Google Play verify xatosi:', e.message);
-    return { configured: true, valid: false, error: e.message };
+    // MUHIM: Google API xatosi (tarmoq, kvota, yangi xarid hali indekslanmagan
+    // bo'lishi mumkin — Google'da bir necha soniya kechikish odatiy hol) HAQIQIY
+    // "xarid yolg'on" degani EMAS. Bunday noaniq holatda haqiqiy PRO xaridorni
+    // bloklab qo'ymaslik uchun "tekshirib bo'lmadi" deb qaytaramiz — chaqiruvchi
+    // (route) buni eski (yumshoq) tekshiruvga tushiradi, qattiq rad etmaydi.
+    console.error('Google Play verify xatosi (tekshirib bo\'lmadi, fail-open):', e.message);
+    return { configured: true, valid: null, error: e.message, unverifiable: true };
   }
 }
 
