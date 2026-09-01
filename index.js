@@ -46,15 +46,6 @@ app.use('/api/lessons', require('./src/routes/lessons'));
 app.use('/api/ai', require('./src/routes/ai'));
 app.use('/api/progress', require('./src/routes/progress'));
 
-// VAQTINCHALIK DIAGNOSTIKA: Google Play service account haqiqatan ishlayaptimi?
-// (permission/config xatosi bo'lsa — bu HAMMA haqiqiy xaridlarni rad etishi mumkin edi)
-app.get('/api/auth/_diag_google_play', async (req, res) => {
-  const googlePlay = require('./src/services/googlePlay');
-  const hasEnv = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const r = await googlePlay.verifySubscription('diag_check_' + Date.now());
-  res.json({ hasEnv, packageName: googlePlay.PACKAGE_NAME, result: r });
-});
-
 // Health check
 app.get('/health', (req, res) => {
   res.json({
