@@ -31,6 +31,10 @@ function loadServiceAccount() {
     // 1) ENV  2) Render Secret File — nomi qanday bo'lishidan qat'i nazar (/etc/secrets/*.json va ilova papkasi)
     const candidates = [];
     if (process.env.AE_FIREBASE_SA) candidates.push(process.env.AE_FIREBASE_SA);
+    // Kalit istalgan nomli ENV o'zgaruvchiga JSON sifatida qo'yilgan bo'lsa ham (project_id bo'yicha ajratiladi)
+    for (const v of Object.values(process.env)) {
+      if (typeof v === 'string' && v.trimStart().startsWith('{') && v.includes('service_account')) candidates.push(v);
+    }
     for (const dir of ['/etc/secrets', process.cwd()]) {
       try {
         for (const f of fs.readdirSync(dir)) {
