@@ -28,13 +28,27 @@ let serviceAccount = null;
 
 function loadServiceAccount() {
   try {
-    const raw = process.env.AE_FIREBASE_SA
-      || (fs.existsSync('/etc/secrets/ae-firebase-sa.json') ? fs.readFileSync('/etc/secrets/ae-firebase-sa.json', 'utf8') : '');
-    if (!raw) return null;
-    const sa = JSON.parse(raw);
-    if (!sa.client_email || !sa.private_key) return null;
-    sa.private_key = sa.private_key.replace(/\\n/g, '\n');
-    return sa;
+    // 1) ENV  2) Render Secret File — nomi qanday bo'lishidan qat'i nazar (/etc/secrets/*.json va ilova papkasi)
+    const candidates = [];
+    if (process.env.AE_FIREBASE_SA) candidates.push(process.env.AE_FIREBASE_SA);
+    for (const dir of ['/etc/secrets', process.cwd()]) {
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (/\.json$/i.test(f) && !/^package/.test(f)) candidates.push(fs.readFileSync(require('path').join(dir, f), 'utf8'));
+        }
+      } catch {}
+    }
+    for (const raw of candidates) {
+      try {
+        const sa = JSON.parse(raw);
+        if (sa.type === 'service_account' && sa.client_email && sa.private_key && /abuelectric/.test(sa.project_id || '')) {
+          sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+          console.log(`🔑 [AE] Firebase kaliti topildi: ${sa.client_email}`);
+          return sa;
+        }
+      } catch {}
+    }
+    return null;
   } catch (e) {
     console.error('⚠️ [AE] Firebase service account o\'qilmadi:', e.message);
     return null;
