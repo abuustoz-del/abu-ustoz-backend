@@ -71,6 +71,14 @@ app.post('/webhook', (req, res) => {
   res.sendStatus(200);
 });
 
+// ==================== ABUELECTRIC (abuelectric.uz) ====================
+// Alohida bot va /ae/... yo'llari. Xato bo'lsa ham Abu-Ustoz ishiga ta'sir qilmasin.
+try {
+  require('./src/abuelectric/telegramLogin').init(app);
+} catch (e) {
+  console.error('⚠️ [AE] modul yuklanmadi:', e.message);
+}
+
 // ==================== START ====================
 // Eslatma: keep-alive va localtunnel olib tashlandi — Render Starter uxlamaydi,
 // tunnel esa faqat lokal ishlab chiqish uchun kerak edi.
