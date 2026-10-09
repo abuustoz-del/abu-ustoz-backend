@@ -17,6 +17,7 @@ const fs = require('fs');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const TelegramBot = require('node-telegram-bot-api');
+const extras = require('./extras');
 
 const router = express.Router();
 const SESSION_TTL = 10 * 60 * 1000;
@@ -135,8 +136,11 @@ async function onStart(msg, code) {
   const chatId = msg.chat.id;
   const s = code && sessions.get(code);
   if (!s || Date.now() - s.createdAt > SESSION_TTL) {
-    return bot.sendMessage(chatId,
-      "Assalomu alaykum! Bu AbuElectric — O'zbekiston bo'ylab elektriklar katalogi.\n\nKirish uchun saytdagi «Telegram orqali kirish» tugmasini bosing.",
+    // Saytsiz kelganlar ham raqamini qoldirsin (lead) — keyin bog'lanish mumkin
+    await bot.sendMessage(chatId,
+      "Assalomu alaykum! Bu AbuElectric — O'zbekiston bo'ylab elektriklar katalogi.\n\nElektrikmisiz? Raqamingizni yuboring — bepul profil ochishga yordam beramiz.",
+      { reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
+    return bot.sendMessage(chatId, "Yoki o'zingiz saytda ro'yxatdan o'ting:",
       { reply_markup: { inline_keyboard: [[{ text: '⚡ abuelectric.uz', url: siteUrl() + '/kirish/' }]] } });
   }
   // Shu chatdagi eski, tugallanmagan sessiyalar bekor (token faqat oxirgi kirishga beriladi)
@@ -150,12 +154,6 @@ async function onStart(msg, code) {
 
 async function onContact(msg) {
   const chatId = msg.chat.id;
-  const entry = [...sessions.entries()].find(([, s]) => s.chatId === chatId && s.status === 'waiting_contact');
-  if (!entry) {
-    return bot.sendMessage(chatId, "Kirish vaqti tugagan. Saytda «Telegram orqali kirish» tugmasini qayta bosing.",
-      { reply_markup: { remove_keyboard: true } });
-  }
-  const [, s] = entry;
   const contact = msg.contact;
   // Faqat o'z raqami: boshqa odamning kontaktini yuborib bo'lmaydi
   if (!contact || String(contact.user_id) !== String(msg.from.id)) {
@@ -165,8 +163,24 @@ async function onContact(msg) {
   if (!isUzMobile(phone)) {
     return bot.sendMessage(chatId, "Hozircha faqat O'zbekiston raqamlari (+998) qabul qilinadi.", { reply_markup: { remove_keyboard: true } });
   }
+  extras.recordLead({ phone, tgId: msg.from.id, name: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' '), username: msg.from.username });
+  const isAdmin = extras.isAdminPhone(phone);
+  if (isAdmin) extras.addAdminChat(chatId, phone);
+
+  const entry = [...sessions.entries()].find(([, o]) => o.chatId === chatId && o.status === 'waiting_contact');
+  if (!entry) {
+    if (isAdmin) {
+      return bot.sendMessage(chatId, "✅ Siz admin sifatida ulandingiz. Yangi ustalar ro'yxatdan o'tganda xabar shu yerga keladi.",
+        { reply_markup: { remove_keyboard: true } });
+    }
+    await bot.sendMessage(chatId, 'Rahmat! Raqamingiz qabul qilindi ✅', { reply_markup: { remove_keyboard: true } });
+    return bot.sendMessage(chatId, "Endi saytda «Telegram orqali kirish» tugmasini bosib, profilingizni to'ldiring:",
+      { reply_markup: { inline_keyboard: [[{ text: "⚡ Ro'yxatdan o'tish", url: siteUrl() + '/kirish/' }]] } });
+  }
+  const [, s] = entry;
   s.token = createCustomToken(uidForPhone(phone), { tel: phone, tg: String(msg.from.id) });
   s.status = 'done';
+  if (isAdmin) bot.sendMessage(chatId, '🛠 Admin: yangi ustalar haqidagi xabarlar shu chatga keladi.').catch(() => {});
   return bot.sendMessage(chatId, `✅ Raqam tasdiqlandi: ${phone}\n\nSaytga qayting — kirish avtomatik davom etadi.`,
     { reply_markup: { remove_keyboard: true } })
     .then(() => bot.sendMessage(chatId, '👇', { reply_markup: { inline_keyboard: [[{ text: '⚡ Saytga qaytish', url: siteUrl() + '/kabinet/' }]] } }));
@@ -189,6 +203,7 @@ function init(app) {
     }
   }
   if (!serviceAccount) console.log('ℹ️  [AE] AE_FIREBASE_SA yo\'q — custom token yaratib bo\'lmaydi');
+  extras.mount(router, () => bot);
   app.use('/ae', router);
 }
 
