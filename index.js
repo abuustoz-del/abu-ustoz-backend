@@ -53,7 +53,6 @@ app.get('/health', (req, res) => {
     time: new Date().toISOString(),
     version: '2.0-webhook',
     has_claude_key: !!process.env.ANTHROPIC_API_KEY,
-    key_prefix: process.env.ANTHROPIC_API_KEY?.slice(0, 15) || 'MISSING',
     has_bot_token: !!process.env.TELEGRAM_BOT_TOKEN,
   });
 });

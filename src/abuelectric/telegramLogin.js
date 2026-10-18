@@ -92,7 +92,11 @@ function ipAllowed(ip) {
 setInterval(() => { const now = Date.now(); for (const [ip, l] of ipHits) if (!l.some((t) => now - t < 10 * 60 * 1000)) ipHits.delete(ip); }, 5 * 60 * 1000).unref();
 
 // Render proksi orqasida: haqiqiy mijoz IP'si X-Forwarded-For'ning birinchi qiymati
-const clientIp = (req) => String(req.get('x-forwarded-for') || req.ip || '').split(',')[0].trim();
+// Diqqat: birinchi qiymatni mijozning o'zi yozib yuborishi mumkin (soxta IP) — shuning uchun Render qo'shgan OXIRGI qiymat olinadi.
+const clientIp = (req) => {
+  const parts = String(req.get('x-forwarded-for') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : String(req.ip || '');
+};
 
 const normalizePhone = (p) => '+' + String(p || '').replace(/\D/g, '');
 const isUzMobile = (p) => /^\+998\d{9}$/.test(p);

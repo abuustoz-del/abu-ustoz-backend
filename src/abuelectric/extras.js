@@ -136,6 +136,31 @@ function mount(router, getBot) {
   });
 
   // Ulashish sahifasi: abuelectric.uz/u/<id> → (Render rewrite) → shu yer. Telegram/Instagram OG preview uchun.
+  // Ustalar profillari sitemap'i: abuelectric.uz/u/sitemap.xml (Render rewrite orqali) — Google profillarni topishi uchun
+  let smCache = { at: 0, xml: '' };
+  router.get('/share/sitemap.xml', async (req, res) => {
+    try {
+      if (!smCache.xml || Date.now() - smCache.at > 60 * 60e3) {
+        const r = await fetch(`https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT}/databases/(default)/documents:runQuery?key=${FIREBASE_WEB_KEY}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'electricians' }], select: { fields: [{ fieldPath: 'updatedAt' }] },
+            where: { fieldFilter: { field: { fieldPath: 'status' }, op: 'EQUAL', value: { stringValue: 'verified' } } }, limit: 5000 } }),
+        });
+        const rows = (await r.json()).filter((x) => x.document);
+        const urls = rows.map((x) => {
+          const id = x.document.name.split('/').pop();
+          const t = x.document.fields?.updatedAt?.timestampValue;
+          return `  <url><loc>${SITE()}/usta/?id=${encodeURIComponent(id)}</loc>${t ? `<lastmod>${t.slice(0, 10)}</lastmod>` : ''}</url>`;
+        });
+        smCache = { at: Date.now(), xml: `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n` };
+      }
+      res.set('Cache-Control', 'public, max-age=3600');
+      res.type('application/xml').send(smCache.xml);
+    } catch (e) {
+      res.status(503).type('text/plain').send('sitemap vaqtincha mavjud emas');
+    }
+  });
+
   router.get('/share/:id', async (req, res) => {
     const id = String(req.params.id || '');
     const target = `${SITE()}/usta/?id=${encodeURIComponent(id)}`;
