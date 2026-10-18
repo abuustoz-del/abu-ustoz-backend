@@ -79,6 +79,15 @@ try {
   console.error('⚠️ [AE] modul yuklanmadi:', e.message);
 }
 
+// ==================== DEPTOR (qarz daftari sinxronlash) ====================
+// Alohida bot (DP_BOT_TOKEN), /dp/... yo'llari va o'z SQLite fayli. Xato bo'lsa
+// ham Abu-Ustoz va AbuElectric ishiga ta'sir qilmasin.
+try {
+  require('./src/deptor/sync').init(app);
+} catch (e) {
+  console.error('⚠️ [DP] modul yuklanmadi:', e.message);
+}
+
 // ==================== START ====================
 // Eslatma: keep-alive va localtunnel olib tashlandi — Render Starter uxlamaydi,
 // tunnel esa faqat lokal ishlab chiqish uchun kerak edi.
