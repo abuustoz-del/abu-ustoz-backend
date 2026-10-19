@@ -37,6 +37,7 @@ app.use(cors());
 // Rasm (base64) yuborilganda katta bo'ladi — chegarani oshiramiz (default 100kb)
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+try { require('./src/deptor/links').mount(app); } catch (e) { console.error('[DP] links:', e.message); }
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ==================== ROUTES ====================
