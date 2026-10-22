@@ -156,6 +156,23 @@ async function onStart(msg, code) {
     { reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
 }
 
+// ---------- Kursga yozilish: t.me/<bot>?start=kurs_2h | kurs_1m ----------
+const COURSES = {
+  kurs_2h: { name: '2 haftalik elektrik kursi', price: "1 800 000 so'm" },
+  kurs_1m: { name: '1 oylik elektrik kursi', price: "2 100 000 so'm" },
+  kurs: { name: 'Elektrik kursi (tarif tanlanmagan)', price: '' },
+};
+const courseIntent = new Map(); // chatId → { plan, at }
+setInterval(() => { const now = Date.now(); for (const [k, v] of courseIntent) if (now - v.at > 60 * 60e3) courseIntent.delete(k); }, 10 * 60e3).unref();
+
+async function onCourseStart(msg, plan) {
+  const c = COURSES[plan];
+  courseIntent.set(msg.chat.id, { plan, at: Date.now() });
+  return bot.sendMessage(msg.chat.id,
+    `📚 ${c.name}${c.price ? `\n💰 Narxi: ${c.price}` : ''}\n🗓 Boshlanishi: 10-noyabrdan\n\nYozilish uchun pastdagi «📱 Raqamni yuborish» tugmasini bosing — administrator siz bilan bog'lanadi.`,
+    { reply_markup: { keyboard: [[{ text: '📱 Raqamni yuborish', request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } });
+}
+
 async function onContact(msg) {
   const chatId = msg.chat.id;
   const contact = msg.contact;
@@ -167,9 +184,21 @@ async function onContact(msg) {
   if (!isUzMobile(phone)) {
     return bot.sendMessage(chatId, "Hozircha faqat O'zbekiston raqamlari (+998) qabul qilinadi.", { reply_markup: { remove_keyboard: true } });
   }
-  extras.recordLead({ phone, tgId: msg.from.id, name: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' '), username: msg.from.username });
+  const fullName = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ');
+  const intent = courseIntent.get(chatId);
+  extras.recordLead({ phone, tgId: msg.from.id, name: fullName, username: msg.from.username, course: intent ? intent.plan : undefined });
   const isAdmin = extras.isAdminPhone(phone);
   if (isAdmin) extras.addAdminChat(chatId, phone);
+
+  if (intent) {
+    courseIntent.delete(chatId);
+    const c = COURSES[intent.plan];
+    extras.notifyAdmins(bot,
+      `📚 Yangi kurs arizasi\n\n👤 ${fullName || '—'}${msg.from.username ? ` (@${msg.from.username})` : ''}\n📞 ${phone}\n🎓 ${c.name}${c.price ? ` — ${c.price}` : ''}`,
+      { reply_markup: { inline_keyboard: [[{ text: '🛠 Admin panel', url: siteUrl() + '/admin/' }]] } });
+    return bot.sendMessage(chatId, `✅ Arizangiz qabul qilindi!\n\n🎓 ${c.name}\n📞 ${phone}\n\nAdministrator tez orada siz bilan bog'lanib, kurs tafsilotlarini aytadi.`,
+      { reply_markup: { remove_keyboard: true } });
+  }
 
   const entry = [...sessions.entries()].find(([, o]) => o.chatId === chatId && o.status === 'waiting_contact');
   if (!entry) {
@@ -196,7 +225,11 @@ function init(app) {
   if (!token) { console.log('ℹ️  [AE] AE_BOT_TOKEN yo\'q — AbuElectric Telegram kirish o\'chiq'); }
   else {
     bot = new TelegramBot(token, { polling: false });
-    bot.onText(/^\/start(?:\s+([a-f0-9]{32}))?/, (msg, m) => onStart(msg, m && m[1]).catch((e) => console.error('[AE] start:', e.message)));
+    bot.onText(/^\/start(?:\s+(\S+))?/, (msg, m) => {
+      const arg = (m && m[1]) || '';
+      const p = COURSES[arg] ? onCourseStart(msg, arg) : onStart(msg, /^[a-f0-9]{32}$/.test(arg) ? arg : undefined);
+      p.catch((e) => console.error('[AE] start:', e.message));
+    });
     bot.on('contact', (msg) => onContact(msg).catch((e) => console.error('[AE] contact:', e.message)));
     bot.getMe().then((me) => { botUsername = me.username; console.log(`🤖 [AE] @${botUsername} tayyor`); }).catch((e) => console.error('[AE] getMe:', e.message));
     const base = process.env.RENDER_EXTERNAL_URL || process.env.AE_PUBLIC_URL;

@@ -36,10 +36,11 @@ function addAdminChat(chatId, phone) {
   save();
 }
 
-function recordLead({ phone, tgId, name, username }) {
+function recordLead({ phone, tgId, name, username, course }) {
   const now = Date.now();
   const l = state.leads[phone] || { phone, firstAt: now, count: 0, registered: false };
   Object.assign(l, { tgId: String(tgId), name: name || l.name || '', username: username || l.username || '', lastAt: now, count: l.count + 1 });
+  if (course) Object.assign(l, { course, courseAt: now });
   state.leads[phone] = l;
   const keys = Object.keys(state.leads);
   if (keys.length > MAX_LEADS) {
@@ -197,4 +198,10 @@ function mount(router, getBot) {
   });
 }
 
-module.exports = { mount, addAdminChat, recordLead, isAdminPhone, _state: () => state };
+// Barcha admin chatlariga xabar (kurs arizasi va h.k.)
+function notifyAdmins(bot, text, extra) {
+  if (!bot) return;
+  Object.keys(state.admins).forEach((chatId) => bot.sendMessage(chatId, text, extra).catch((e) => console.error('[AE] notify:', e.message)));
+}
+
+module.exports = { mount, addAdminChat, recordLead, isAdminPhone, notifyAdmins, _state: () => state };
