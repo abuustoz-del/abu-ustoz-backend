@@ -654,6 +654,8 @@ function create(opts = {}) {
     const TelegramBot = require('node-telegram-bot-api');
     bot = new TelegramBot(token, { polling: false });
     bot.onText(/^\/start(?:\s+([a-f0-9]{32}))?/, (msg, m) => onStart(msg, m && m[1]).catch((e) => console.error('[DP] start:', e.message)));
+    // Zaxira nusxa yuboriladigan chat raqamini bilish uchun (faqat o'z raqamingizni ko'rsatadi).
+    bot.onText(/^\/id$/, (msg) => bot.sendMessage(msg.chat.id, `Chat ID: ${msg.chat.id}`).catch(() => {}));
     bot.on('contact', (msg) => onContact(msg).catch((e) => console.error('[DP] contact:', e.message)));
     bot.getMe().then((me) => { botUsername = me.username; console.log(`🤖 [DP] @${botUsername} tayyor`); }).catch((e) => console.error('[DP] getMe:', e.message));
     const base = process.env.RENDER_EXTERNAL_URL || process.env.DP_PUBLIC_URL;
@@ -664,9 +666,26 @@ function create(opts = {}) {
     }
   }
 
+  let backups = null;
+  /** Kunlik zaxira: faqat asosiy serverda (testlarda chaqirilmaydi). */
+  function startBackups() {
+    if (backups) return backups;
+    backups = require('./backup').start({
+      db,
+      dir: path.join(dataDir, 'backups'),
+      getBot: () => bot,
+      chatId: process.env.DP_BACKUP_CHAT_ID,
+      secret: process.env.DP_BACKUP_KEY,
+    });
+    if (!process.env.DP_BACKUP_CHAT_ID || !process.env.DP_BACKUP_KEY) {
+      console.log("ℹ️  [DP] DP_BACKUP_CHAT_ID/DP_BACKUP_KEY yo'q - faqat mahalliy zaxira (tashqi yuborilmaydi)");
+    }
+    return backups;
+  }
+
   return {
-    router, db, sessions, initBot,
-    close() { clearInterval(cleaner); try { db.close(); } catch {} },
+    router, db, sessions, initBot, startBackups,
+    close() { clearInterval(cleaner); if (backups) backups.stop(); try { db.close(); } catch {} },
     _test: { completeLogin, issueToken, upsertUser },
   };
 }
@@ -675,6 +694,7 @@ function create(opts = {}) {
 function init(app) {
   const dp = create();
   dp.initBot();
+  dp.startBackups();
   app.use('/dp', dp.router);
   return dp;
 }
