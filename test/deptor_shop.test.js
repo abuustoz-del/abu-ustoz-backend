@@ -39,7 +39,7 @@ async function boot() {
     (await call('POST', '/sync', { token, body: { since, name, ops } })).json;
   let closed = false;
   const h = {
-    login, sync,
+    login, sync, call,
     close: async () => {
       if (closed) return;
       closed = true;
@@ -250,5 +250,76 @@ test("do'kon qarzida mijoz raqami bo'lmasa ham do'kondoshlarga ko'rinadi; shaxsi
   assert.equal(d.counterName, 'Nomalum');
   r = await s.sync(t.s1, [debt({ ref: 'NOPH0002', counter: '', shop: false })], 0);
   assert.equal(r.rejected[0].reason, 'bad_counter');
+  await s.close();
+});
+
+test("tarix: kim nima qilgani yoziladi; faqat yaratuvchi tomon ko'ra oladi", async () => {
+  const { s, t } = await setup();
+  await s.sync(t.s1, [debt()], 0, 'Sardor');
+  await s.sync(t.s2, [{ op: 'pay', uid: 'PAYUID0100', ref: 'SHOP0001', amount: 10000000, date: 1760100000000 }], 0, 'Jasur');
+  await s.sync(t.s2, [debt({ note: 'tuzatildi' })], 0, 'Jasur');
+  const h = await s.call('GET', '/history?ref=SHOP0001', { token: t.ega });
+  assert.equal(h.status, 200);
+  const acts = h.json.items.map((i) => `${i.action}:${i.name}`);
+  assert.deepEqual(acts, ['edit:Jasur', 'pay:Jasur', 'create:Sardor']); // yangisi birinchi
+  assert.equal((await s.call('GET', '/history?ref=SHOP0001', { token: t.mijoz })).status, 404);
+  assert.equal((await s.call('GET', '/history?ref=SHOP0001', { token: t.begona })).status, 404);
+  await s.close();
+});
+
+test("o'chirilgan do'kon qarzi 'o'chirilganlar'da ko'rinadi va do'kondosh tiklay oladi (qaytarishlari bilan)", async () => {
+  const { s, t } = await setup();
+  await s.sync(t.s1, [debt()], 0, 'Sardor');
+  await s.sync(t.s1, [{ op: 'pay', uid: 'PAYUID0200', ref: 'SHOP0001', amount: 20000000, date: 1760100000000 }], 0, 'Sardor');
+  await s.sync(t.s1, [{ op: 'del_debt', ref: 'SHOP0001' }], 0, 'Sardor');
+  let tr = await s.call('GET', '/trash', { token: t.s2 });
+  assert.equal(tr.json.debts.length, 1);
+  assert.equal(tr.json.debts[0].ref, 'SHOP0001');
+  assert.equal(tr.json.debts[0].by, 'Sardor');
+  assert.equal((await s.call('GET', '/trash', { token: t.begona })).json.debts.length, 0);
+  const since = (await s.sync(t.s2, [], 0)).rev;
+  const r = await s.sync(t.s2, [{ op: 'restore_debt', ref: 'SHOP0001' }], since, 'Jasur');
+  assert.deepEqual(r.rejected, []);
+  const d = r.debts.find((x) => x.ref === 'SHOP0001');
+  assert.equal(d.deleted, false);
+  assert.equal(r.payments.length, 1); // qaytarish ham qayta keladi
+  tr = await s.call('GET', '/trash', { token: t.s2 });
+  assert.equal(tr.json.debts.length, 0);
+  const hist = (await s.call('GET', '/history?ref=SHOP0001', { token: t.ega })).json.items;
+  assert.equal(hist[0].action, 'restore');
+  assert.equal(hist[0].name, 'Jasur');
+  await s.close();
+});
+
+test("o'chirilgan qaytarishni tiklash mumkin; mijoz va begona qarzni tiklay olmaydi", async () => {
+  const { s, t } = await setup();
+  await s.sync(t.s1, [debt()], 0, 'Sardor');
+  await s.sync(t.s1, [{ op: 'pay', uid: 'PAYUID0300', ref: 'SHOP0001', amount: 5000000, date: 1760100000000 }], 0);
+  await s.sync(t.s1, [{ op: 'del_pay', uid: 'PAYUID0300' }], 0);
+  let tr = await s.call('GET', '/trash', { token: t.ega });
+  assert.equal(tr.json.payments.length, 1);
+  let r = await s.sync(t.ega, [{ op: 'restore_pay', uid: 'PAYUID0300' }], 0);
+  assert.deepEqual(r.rejected, []);
+  assert.equal(r.payments.find((p) => p.uid === 'PAYUID0300').deleted, false);
+  await s.sync(t.s1, [{ op: 'del_debt', ref: 'SHOP0001' }], 0);
+  r = await s.sync(t.mijoz, [{ op: 'restore_debt', ref: 'SHOP0001' }], 0);
+  assert.equal(r.rejected[0].reason, 'forbidden');
+  r = await s.sync(t.begona, [{ op: 'restore_debt', ref: 'SHOP0001' }], 0);
+  assert.equal(r.rejected[0].reason, 'forbidden');
+  await s.close();
+});
+
+test("shaxsiy qarzni yaratuvchi tiklay oladi; do'kondan chiqqan sotuvchi do'kon qarzini tiklay olmaydi", async () => {
+  const { s, t } = await setup();
+  await s.sync(t.s1, [debt({ ref: 'PRIV0100', shop: false, counter: BEGONA })], 0, 'Sardor');
+  await s.sync(t.s1, [{ op: 'del_debt', ref: 'PRIV0100' }], 0);
+  assert.equal((await s.call('GET', '/trash', { token: t.s1 })).json.debts.length, 1);
+  let r = await s.sync(t.s1, [{ op: 'restore_debt', ref: 'PRIV0100' }], 0);
+  assert.deepEqual(r.rejected, []);
+  await s.sync(t.s1, [debt({ ref: 'SHOP0500' })], 0);
+  await s.sync(t.s1, [{ op: 'del_debt', ref: 'SHOP0500' }], 0);
+  await s.sync(t.ega, [{ op: 'shop_remove', phone: SOTUVCHI }], 0);
+  r = await s.sync(t.s1, [{ op: 'restore_debt', ref: 'SHOP0500' }], 0);
+  assert.equal(r.rejected[0].reason, 'forbidden');
   await s.close();
 });

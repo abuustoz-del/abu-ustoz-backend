@@ -98,6 +98,17 @@ function openDb(file) {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS shop_members_shop ON shop_members(shop_id);
+    CREATE TABLE IF NOT EXISTS audit(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      who TEXT NOT NULL,
+      who_name TEXT NOT NULL DEFAULT '',
+      action TEXT NOT NULL,
+      ref TEXT NOT NULL DEFAULT '',
+      uid TEXT NOT NULL DEFAULT '',
+      detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS audit_ref ON audit(ref, id);
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id = 1), rev INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter(id, rev) VALUES (1, 0);
   `);
@@ -191,6 +202,12 @@ function create(opts = {}) {
     }
   }
   const MAX_SHOP_MEMBERS = 10;
+
+  /** O'zgarishlar tarixi: kim, qachon, nima qilgan. Hech qachon o'chirilmaydi. */
+  const insAudit = db.prepare('INSERT INTO audit(ts, who, who_name, action, ref, uid, detail) VALUES (?,?,?,?,?,?,?)');
+  function audit(me, myName, action, ref, uid, detail) {
+    insAudit.run(Date.now(), me, myName || '', action, ref || '', uid || '', detail ? JSON.stringify(detail) : '');
+  }
 
   function upsertUser(phone, tgId, name) {
     const now = Date.now();
@@ -320,6 +337,7 @@ function create(opts = {}) {
           db.prepare(`INSERT INTO debts(ref, creator, creator_name, author_name, shop, counter_name, counter, dir, kind, amount, currency, note, date, due, closed, status, deleted, rev)
                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,0,?)`)
             .run(ref, me, shownName, name, shopId, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, counter ? 'pending' : 'confirmed', rev);
+          audit(me, name, 'create', ref, '', { amount: op.amount, dir: op.dir, name: cname, note });
           return null;
         }
         if (!onCreatorSide(me, cur)) return 'forbidden';
@@ -337,6 +355,9 @@ function create(opts = {}) {
         const shown = cur.shop ? cur.creator_name : name;
         db.prepare(`UPDATE debts SET creator_name=?, counter_name=?, counter=?, dir=?, kind=?, amount=?, currency=?, note=?, date=?, due=?, status=?, rev=? WHERE ref=?`)
           .run(shown, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, status, rev, ref);
+        audit(me, name, 'edit', ref, '', {
+          amount: [cur.amount, op.amount], note: [cur.note, note], name: [cur.counter_name, cname],
+        });
         return null;
       }
       case 'del_debt': {
@@ -345,6 +366,7 @@ function create(opts = {}) {
         if (!onCreatorSide(me, cur)) return 'forbidden';
         if (cur.deleted) return null;
         db.prepare('UPDATE debts SET deleted = 1, rev = ? WHERE ref = ?').run(q.nextRev.get().rev, cur.ref);
+        audit(me, myName, 'delete', cur.ref, '', { amount: cur.amount, name: cur.counter_name });
         return null;
       }
       case 'respond': {
@@ -354,6 +376,7 @@ function create(opts = {}) {
         if (op.status !== 'confirmed' && op.status !== 'rejected') return 'bad_status';
         if (cur.status === op.status) return null;
         db.prepare('UPDATE debts SET status = ?, rev = ? WHERE ref = ?').run(op.status, q.nextRev.get().rev, cur.ref);
+        audit(me, myName, 'respond', cur.ref, '', { status: op.status });
         return null;
       }
       case 'close': {
@@ -364,6 +387,7 @@ function create(opts = {}) {
         const closed = op.closed ? 1 : 0;
         if (cur.closed === closed) return null;
         db.prepare('UPDATE debts SET closed = ?, rev = ? WHERE ref = ?').run(closed, q.nextRev.get().rev, cur.ref);
+        audit(me, myName, closed ? 'close' : 'reopen', cur.ref, '', null);
         return null;
       }
       case 'pay': {
@@ -382,6 +406,7 @@ function create(opts = {}) {
         }
         db.prepare('INSERT INTO payments(uid, ref, amount, date, by_phone, deleted, rev) VALUES (?,?,?,?,?,0,?)')
           .run(uid, d.ref, op.amount, op.date, me, q.nextRev.get().rev);
+        audit(me, myName, 'pay', d.ref, uid, { amount: op.amount });
         return null;
       }
       case 'del_pay': {
@@ -391,6 +416,31 @@ function create(opts = {}) {
         if (!d || !canAccess(me, d)) return 'forbidden';
         if (cur.deleted) return null;
         db.prepare('UPDATE payments SET deleted = 1, rev = ? WHERE uid = ?').run(q.nextRev.get().rev, cur.uid);
+        audit(me, myName, 'del_pay', d.ref, cur.uid, { amount: cur.amount });
+        return null;
+      }
+      case 'restore_debt': {
+        const d = q.debt.get(clip(op.ref, 40));
+        if (!d) return 'not_found';
+        if (!onCreatorSide(me, d)) return 'forbidden';
+        if (!d.deleted) return null;
+        db.prepare('UPDATE debts SET deleted = 0, rev = ? WHERE ref = ?').run(q.nextRev.get().rev, d.ref);
+        // Qaytarishlar ham qayta yuborilsin (telefondagi nusxa qarz bilan birga o'chgan edi).
+        for (const r of db.prepare('SELECT uid FROM payments WHERE ref = ?').all(d.ref)) {
+          db.prepare('UPDATE payments SET rev = ? WHERE uid = ?').run(q.nextRev.get().rev, r.uid);
+        }
+        audit(me, myName, 'restore', d.ref, '', { amount: d.amount, name: d.counter_name });
+        return null;
+      }
+      case 'restore_pay': {
+        const cur = q.pay.get(clip(op.uid, 40));
+        if (!cur) return 'not_found';
+        const d = q.debt.get(cur.ref);
+        if (!d || !canAccess(me, d)) return 'forbidden';
+        if (d.deleted) return 'debt_deleted';
+        if (!cur.deleted) return null;
+        db.prepare('UPDATE payments SET deleted = 0, rev = ? WHERE uid = ?').run(q.nextRev.get().rev, cur.uid);
+        audit(me, myName, 'restore_pay', d.ref, cur.uid, { amount: cur.amount });
         return null;
       }
       case 'shop_create': {
@@ -463,6 +513,42 @@ function create(opts = {}) {
   const pullPays = db.prepare(`SELECT p.* FROM payments p JOIN debts d ON d.ref = p.ref
                                WHERE ((d.creator = ? AND d.shop IS NULL) OR d.counter = ? OR d.shop = ?) AND p.rev > ? ORDER BY p.rev LIMIT ${PULL_PAYS}`);
   const isReg = db.prepare('SELECT 1 FROM users WHERE phone = ? AND tg_id IS NOT NULL');
+
+  // ---------- Tarix va o'chirilganlar ----------
+  router.get('/history', auth, (req, res) => {
+    if (!allowed('hi:' + req.phone, 60, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
+    const d = q.debt.get(clip(req.query.ref, 40));
+    if (!d || !onCreatorSide(req.phone, d)) return res.status(404).json({ error: 'not_found' });
+    const rows = db.prepare('SELECT ts, who, who_name, action, uid, detail FROM audit WHERE ref = ? ORDER BY id DESC LIMIT 200').all(d.ref);
+    res.json({
+      items: rows.map((r) => {
+        let detail = null;
+        try { detail = r.detail ? JSON.parse(r.detail) : null; } catch {}
+        return { ts: r.ts, who: r.who, name: r.who_name, action: r.action, uid: r.uid, detail };
+      }),
+    });
+  });
+
+  router.get('/trash', auth, (req, res) => {
+    if (!allowed('tr:' + req.phone, 30, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
+    const m = activeShop(req.phone);
+    const shopId = m ? m.shop_id : -1;
+    const lastDel = db.prepare("SELECT ts, who_name FROM audit WHERE ref = ? AND action = 'delete' ORDER BY id DESC LIMIT 1");
+    const lastDelPay = db.prepare("SELECT ts, who_name FROM audit WHERE uid = ? AND action = 'del_pay' ORDER BY id DESC LIMIT 1");
+    const debts = db.prepare(`SELECT * FROM debts WHERE deleted = 1 AND ((creator = ? AND shop IS NULL) OR shop = ?) ORDER BY rev DESC LIMIT 100`)
+      .all(req.phone, shopId).map((d) => {
+        const a = lastDel.get(d.ref) || {};
+        return { ref: d.ref, name: d.counter_name, dir: d.dir, kind: d.kind, amount: d.amount, currency: d.currency, date: d.date, shop: d.shop || null, deletedAt: a.ts || 0, by: a.who_name || '' };
+      });
+    const payments = db.prepare(`SELECT p.*, d.counter_name AS cname FROM payments p JOIN debts d ON d.ref = p.ref
+                                 WHERE p.deleted = 1 AND d.deleted = 0 AND ((d.creator = ? AND d.shop IS NULL) OR d.shop = ? OR d.counter = ?)
+                                 ORDER BY p.rev DESC LIMIT 100`)
+      .all(req.phone, shopId, req.phone).map((p) => {
+        const a = lastDelPay.get(p.uid) || {};
+        return { uid: p.uid, ref: p.ref, name: p.cname, amount: p.amount, date: p.date, deletedAt: a.ts || 0, by: a.who_name || '' };
+      });
+    res.json({ debts, payments });
+  });
 
   router.post('/sync', auth, (req, res) => {
     if (!allowed('sy:' + req.phone, 120, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
