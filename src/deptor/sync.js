@@ -281,7 +281,23 @@ function create(opts = {}) {
     res.sendStatus(200);
   });
 
-  router.get('/health', (req, res) => res.json({ bot: !!bot, botUsername, testMode, sessions: sessions.size }));
+  router.get('/health', async (req, res) => {
+    const out = { bot: !!bot, botUsername, testMode, sessions: sessions.size };
+    // Diagnostika: Telegram aloqasi va zaxira holati (maxfiy ma'lumotlarsiz).
+    try {
+      const bdir = path.join(dataDir, 'backups');
+      const files = fs.existsSync(bdir) ? fs.readdirSync(bdir).filter((f) => f.endsWith('.db')).sort() : [];
+      out.backups = { count: files.length, last: files[files.length - 1] || null, offsite: !!(process.env.DP_BACKUP_CHAT_ID && process.env.DP_BACKUP_KEY) };
+      out.disk = dataDir.startsWith('/var/data') ? 'persistent' : 'local';
+    } catch {}
+    if (bot) {
+      try {
+        const w = await Promise.race([bot.getWebHookInfo(), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 4000))]);
+        out.webhook = { set: !!w.url, pending: w.pending_update_count, lastError: w.last_error_message || null, lastErrorAt: w.last_error_date || null };
+      } catch (e) { out.webhook = { error: e.message }; }
+    }
+    res.json(out);
+  });
 
   // ---------- Foydalanuvchi ma'lumoti ----------
   router.get('/me', auth, (req, res) => res.json({ phone: req.phone, name: req.user.name }));
