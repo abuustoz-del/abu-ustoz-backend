@@ -84,11 +84,28 @@ function openDb(file) {
       rev INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS payments_ref ON payments(ref, rev);
+    CREATE TABLE IF NOT EXISTS shops(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS shop_members(
+      phone TEXT PRIMARY KEY,
+      shop_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'seller',
+      status TEXT NOT NULL DEFAULT 'invited',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS shop_members_shop ON shop_members(shop_id);
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id = 1), rev INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter(id, rev) VALUES (1, 0);
   `);
   const cols = db.prepare('PRAGMA table_info(debts)').all().map((c) => c.name);
   if (!cols.includes('counter_name')) db.exec("ALTER TABLE debts ADD COLUMN counter_name TEXT NOT NULL DEFAULT ''");
+  if (!cols.includes('shop')) db.exec('ALTER TABLE debts ADD COLUMN shop INTEGER');
+  if (!cols.includes('author_name')) db.exec("ALTER TABLE debts ADD COLUMN author_name TEXT NOT NULL DEFAULT ''");
+  db.exec('CREATE INDEX IF NOT EXISTS debts_shop ON debts(shop, rev)');
   return db;
 }
 
@@ -143,7 +160,37 @@ function create(opts = {}) {
     maxRev: db.prepare('SELECT rev FROM counter WHERE id = 1'),
     debt: db.prepare('SELECT * FROM debts WHERE ref = ?'),
     pay: db.prepare('SELECT * FROM payments WHERE uid = ?'),
+    member: db.prepare('SELECT * FROM shop_members WHERE phone = ?'),
+    shop: db.prepare('SELECT * FROM shops WHERE id = ?'),
+    members: db.prepare('SELECT m.phone, m.role, m.status, u.name FROM shop_members m LEFT JOIN users u ON u.phone = m.phone WHERE m.shop_id = ? ORDER BY m.created_at'),
+    memberCount: db.prepare('SELECT COUNT(*) AS n FROM shop_members WHERE shop_id = ?'),
   };
+
+  /** Foydalanuvchining faol do'koni (yo'q bo'lsa null). */
+  function activeShop(phone) {
+    const m = q.member.get(phone);
+    return m && m.status === 'active' ? m : null;
+  }
+  /** Qarzda "yaratuvchi tomon"da ishlay oladimi (o'zi yoki do'kondoshi). */
+  function onCreatorSide(me, d) {
+    if (!d.shop) return d.creator === me;
+    // Do'kon qarzi faqat do'kon a'zosiga ochiq (yaratuvchi do'kondan chiqsa ham ko'rmaydi).
+    const m = activeShop(me);
+    return !!m && m.shop_id === d.shop;
+  }
+  const canAccess = (me, d) => onCreatorSide(me, d) || d.counter === me;
+  /** Qarz bergan tomonmi (close uchun). */
+  const isLender = (me, d) => (d.dir === 'gave' ? onCreatorSide(me, d) : d.counter === me);
+  /** Do'kon yozuvlarini qayta tamg'alash: yangi a'zo ularni qaytadan tortib olsin. */
+  function restamp(shopId) {
+    for (const r of db.prepare('SELECT ref FROM debts WHERE shop = ?').all(shopId)) {
+      db.prepare('UPDATE debts SET rev = ? WHERE ref = ?').run(q.nextRev.get().rev, r.ref);
+    }
+    for (const r of db.prepare('SELECT p.uid FROM payments p JOIN debts d ON d.ref = p.ref WHERE d.shop = ?').all(shopId)) {
+      db.prepare('UPDATE payments SET rev = ? WHERE uid = ?').run(q.nextRev.get().rev, r.uid);
+    }
+  }
+  const MAX_SHOP_MEMBERS = 10;
 
   function upsertUser(phone, tgId, name) {
     const now = Date.now();
@@ -230,7 +277,6 @@ function create(opts = {}) {
   });
 
   // ---------- Sinxronlash ----------
-  const lender = (d) => (d.dir === 'gave' ? d.creator : d.counter);
 
   /** Bitta amalni bajaradi; xato bo'lsa sabab satrini qaytaradi. */
   function applyOp(me, myName, op) {
@@ -238,11 +284,18 @@ function create(opts = {}) {
     switch (op.op) {
       case 'debt': {
         const ref = clip(op.ref, 40);
-        const counter = normalizePhone(op.counter);
         if (!/^[A-Za-z0-9_-]{6,40}$/.test(ref)) return 'bad_ref';
         const existing = q.debt.get(ref);
-        if (existing && existing.creator !== me) return 'forbidden'; // boshqaning yozuvi
-        if (!isUzMobile(counter) || counter === me) return 'bad_counter';
+        if (existing && !onCreatorSide(me, existing)) return 'forbidden'; // boshqaning yozuvi
+        // Do'kon qarzida mijoz raqami bo'lmasligi mumkin (counter = ''): faqat do'kondoshlar ko'radi.
+        const rawCounter = clip(op.counter, 20);
+        const shopDebt = !!(existing ? existing.shop : op.shop);
+        const counter = rawCounter ? normalizePhone(rawCounter) : '';
+        if (counter === '') {
+          if (!shopDebt) return 'bad_counter';
+        } else if (!isUzMobile(counter) || counter === me) {
+          return 'bad_counter';
+        }
         if (op.dir !== 'gave' && op.dir !== 'took') return 'bad_dir';
         const kind = op.kind === 'payment' ? 'payment' : 'debt';
         if (!isInt(op.amount, 1, 1e13)) return 'bad_amount';
@@ -255,31 +308,41 @@ function create(opts = {}) {
         const cur = q.debt.get(ref);
         const name = myName || me;
         if (!cur) {
+          let shopId = null;
+          let shownName = name;
+          if (op.shop) {
+            const m = activeShop(me);
+            if (!m) return 'no_shop';
+            shopId = m.shop_id;
+            shownName = q.shop.get(shopId).name;
+          }
           const rev = q.nextRev.get().rev;
-          db.prepare(`INSERT INTO debts(ref, creator, creator_name, counter_name, counter, dir, kind, amount, currency, note, date, due, closed, status, deleted, rev)
-                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,'pending',0,?)`)
-            .run(ref, me, name, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, rev);
+          db.prepare(`INSERT INTO debts(ref, creator, creator_name, author_name, shop, counter_name, counter, dir, kind, amount, currency, note, date, due, closed, status, deleted, rev)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,0,?)`)
+            .run(ref, me, shownName, name, shopId, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, counter ? 'pending' : 'confirmed', rev);
           return null;
         }
-        if (cur.creator !== me) return 'forbidden';
+        if (!onCreatorSide(me, cur)) return 'forbidden';
         if (cur.deleted) return 'deleted';
         const changed = cur.counter !== counter || cur.dir !== op.dir || cur.kind !== kind
           || cur.amount !== op.amount || cur.date !== op.date || (cur.due ?? null) !== due
-          || cur.currency !== currency || cur.note !== note || cur.creator_name !== name
-          || cur.counter_name !== cname;
+          || cur.currency !== currency || cur.note !== note
+          || (!cur.shop && cur.creator_name !== name) || cur.counter_name !== cname;
         if (!changed) return null;
         const material = cur.counter !== counter || cur.dir !== op.dir || cur.kind !== kind
           || cur.amount !== op.amount || cur.currency !== currency;
-        const status = material ? 'pending' : cur.status;
+        const status = !counter ? 'confirmed' : (material ? 'pending' : cur.status);
         const rev = q.nextRev.get().rev;
+        // Do'kon yozuvida ko'rinadigan nom do'kon nomi; shaxsiyda - egasining ismi.
+        const shown = cur.shop ? cur.creator_name : name;
         db.prepare(`UPDATE debts SET creator_name=?, counter_name=?, counter=?, dir=?, kind=?, amount=?, currency=?, note=?, date=?, due=?, status=?, rev=? WHERE ref=?`)
-          .run(name, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, status, rev, ref);
+          .run(shown, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, status, rev, ref);
         return null;
       }
       case 'del_debt': {
         const cur = q.debt.get(clip(op.ref, 40));
         if (!cur) return null; // allaqachon yo'q - muammo emas
-        if (cur.creator !== me) return 'forbidden';
+        if (!onCreatorSide(me, cur)) return 'forbidden';
         if (cur.deleted) return null;
         db.prepare('UPDATE debts SET deleted = 1, rev = ? WHERE ref = ?').run(q.nextRev.get().rev, cur.ref);
         return null;
@@ -296,8 +359,8 @@ function create(opts = {}) {
       case 'close': {
         const cur = q.debt.get(clip(op.ref, 40));
         if (!cur || cur.deleted) return 'not_found';
-        if (cur.creator !== me && cur.counter !== me) return 'forbidden';
-        if (lender(cur) !== me) return 'forbidden';
+        if (!canAccess(me, cur)) return 'forbidden';
+        if (!isLender(me, cur)) return 'forbidden';
         const closed = op.closed ? 1 : 0;
         if (cur.closed === closed) return null;
         db.prepare('UPDATE debts SET closed = ?, rev = ? WHERE ref = ?').run(closed, q.nextRev.get().rev, cur.ref);
@@ -308,7 +371,7 @@ function create(opts = {}) {
         if (!/^[A-Za-z0-9_-]{8,40}$/.test(uid)) return 'bad_uid';
         const d = q.debt.get(clip(op.ref, 40));
         if (!d || d.deleted) return 'not_found';
-        if (d.creator !== me && d.counter !== me) return 'forbidden';
+        if (!canAccess(me, d)) return 'forbidden';
         if (d.status === 'rejected') return 'rejected';
         if (!isInt(op.amount, 1, 1e13)) return 'bad_amount';
         if (!isInt(op.date, 0, 4e12)) return 'bad_date';
@@ -325,9 +388,55 @@ function create(opts = {}) {
         const cur = q.pay.get(clip(op.uid, 40));
         if (!cur) return null;
         const d = q.debt.get(cur.ref);
-        if (!d || (d.creator !== me && d.counter !== me)) return 'forbidden';
+        if (!d || !canAccess(me, d)) return 'forbidden';
         if (cur.deleted) return null;
         db.prepare('UPDATE payments SET deleted = 1, rev = ? WHERE uid = ?').run(q.nextRev.get().rev, cur.uid);
+        return null;
+      }
+      case 'shop_create': {
+        if (q.member.get(me)) return 'already_member';
+        const name = clip(op.name, 60);
+        if (name.length < 2) return 'bad_name';
+        const id = db.prepare('INSERT INTO shops(name, owner, created_at) VALUES (?,?,?)').run(name, me, Date.now()).lastInsertRowid;
+        db.prepare("INSERT INTO shop_members(phone, shop_id, role, status, created_at) VALUES (?,?, 'owner','active',?)").run(me, id, Date.now());
+        return null;
+      }
+      case 'shop_invite': {
+        const m = activeShop(me);
+        if (!m || m.role !== 'owner') return 'forbidden';
+        const phone = normalizePhone(op.phone);
+        if (!isUzMobile(phone) || phone === me) return 'bad_phone';
+        const u = q.user.get(phone);
+        if (!u || !u.tg_id) return 'not_registered';
+        if (q.member.get(phone)) return 'already_member';
+        if (q.memberCount.get(m.shop_id).n >= MAX_SHOP_MEMBERS) return 'too_many_members';
+        db.prepare("INSERT INTO shop_members(phone, shop_id, role, status, created_at) VALUES (?,?, 'seller','invited',?)").run(phone, m.shop_id, Date.now());
+        return null;
+      }
+      case 'shop_accept': {
+        const m = q.member.get(me);
+        if (!m || m.status !== 'invited') return 'no_invite';
+        db.prepare("UPDATE shop_members SET status = 'active' WHERE phone = ?").run(me);
+        restamp(m.shop_id);
+        return null;
+      }
+      case 'shop_leave': { // taklifni rad etish yoki do'kondan chiqish
+        const m = q.member.get(me);
+        if (!m) return null;
+        if (m.role === 'owner') {
+          if (q.memberCount.get(m.shop_id).n > 1) return 'owner_cannot_leave';
+          db.prepare('DELETE FROM shops WHERE id = ?').run(m.shop_id);
+        }
+        db.prepare('DELETE FROM shop_members WHERE phone = ?').run(me);
+        return null;
+      }
+      case 'shop_remove': {
+        const m = activeShop(me);
+        if (!m || m.role !== 'owner') return 'forbidden';
+        const phone = normalizePhone(op.phone);
+        const t = q.member.get(phone);
+        if (!t || t.shop_id !== m.shop_id || phone === me) return 'not_found';
+        db.prepare('DELETE FROM shop_members WHERE phone = ?').run(phone);
         return null;
       }
       default:
@@ -335,11 +444,24 @@ function create(opts = {}) {
     }
   }
 
+  /** Foydalanuvchi uchun do'kon holati (taklif yoki faol), yo'q bo'lsa null. */
+  function shopInfo(phone) {
+    const m = q.member.get(phone);
+    if (!m) return null;
+    const sh = q.shop.get(m.shop_id);
+    if (!sh) return null;
+    const info = { id: sh.id, name: sh.name, role: m.role, status: m.status, owner: sh.owner };
+    if (m.status === 'active') {
+      info.members = q.members.all(m.shop_id).map((x) => ({ phone: x.phone, name: x.name || '', role: x.role, status: x.status }));
+    }
+    return info;
+  }
+
   const PULL_DEBTS = opts.pullDebts || 2000;
   const PULL_PAYS = opts.pullPays || 5000;
-  const pullDebts = db.prepare(`SELECT * FROM debts WHERE (creator = ? OR counter = ?) AND rev > ? ORDER BY rev LIMIT ${PULL_DEBTS}`);
+  const pullDebts = db.prepare(`SELECT * FROM debts WHERE ((creator = ? AND shop IS NULL) OR counter = ? OR shop = ?) AND rev > ? ORDER BY rev LIMIT ${PULL_DEBTS}`);
   const pullPays = db.prepare(`SELECT p.* FROM payments p JOIN debts d ON d.ref = p.ref
-                               WHERE (d.creator = ? OR d.counter = ?) AND p.rev > ? ORDER BY p.rev LIMIT ${PULL_PAYS}`);
+                               WHERE ((d.creator = ? AND d.shop IS NULL) OR d.counter = ? OR d.shop = ?) AND p.rev > ? ORDER BY p.rev LIMIT ${PULL_PAYS}`);
   const isReg = db.prepare('SELECT 1 FROM users WHERE phone = ? AND tg_id IS NOT NULL');
 
   router.post('/sync', auth, (req, res) => {
@@ -363,8 +485,10 @@ function create(opts = {}) {
       console.error('[DP] sync:', e.message);
       return res.status(500).json({ error: 'server' });
     }
-    let debts = pullDebts.all(req.phone, req.phone, since);
-    let payments = pullPays.all(req.phone, req.phone, since);
+    const myShop = activeShop(req.phone);
+    const shopId = myShop ? myShop.shop_id : -1;
+    let debts = pullDebts.all(req.phone, req.phone, shopId, since);
+    let payments = pullPays.all(req.phone, req.phone, shopId, since);
     // Natija juda katta bo'lsa, kursorni qirqilgan joyga qo'yamiz - aks holda
     // qolgan yozuvlar hech qachon kelmay qolardi. Ilova `more` bo'lsa qayta so'raydi.
     const globalMax = q.maxRev.get().rev;
@@ -382,8 +506,9 @@ function create(opts = {}) {
       more: upto < globalMax,
       debts: debts.map((d) => ({
         ref: d.ref, creator: d.creator, creatorName: d.creator_name, counter: d.counter,
-        // Yaratuvchining o'z yorlig'i faqat o'ziga qaytadi
-        counterName: d.creator === req.phone ? d.counter_name : '',
+        // Yaratuvchi tomonning (o'zi va do'kondoshlari) yorlig'i faqat shu tomonga qaytadi
+        counterName: (d.shop ? d.shop === shopId : d.creator === req.phone) ? d.counter_name : '',
+        authorName: d.author_name, shop: d.shop || null,
         dir: d.dir, kind: d.kind, amount: d.amount, currency: d.currency, note: d.note,
         date: d.date, due: d.due, closed: !!d.closed, status: d.status, deleted: !!d.deleted,
       })),
@@ -392,6 +517,7 @@ function create(opts = {}) {
       })),
       registered,
       rejected,
+      shop: shopInfo(req.phone),
     });
   });
 
