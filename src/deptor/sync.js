@@ -290,6 +290,13 @@ function create(opts = {}) {
       const files = fs.existsSync(bdir) ? fs.readdirSync(bdir).filter((f) => f.endsWith('.db')).sort() : [];
       out.backups = { count: files.length, last: files[files.length - 1] || null, offsite: !!(process.env.DP_BACKUP_CHAT_ID && process.env.DP_BACKUP_KEY) };
       out.disk = dataDir.startsWith('/var/data') ? 'persistent' : 'local';
+      // Faqat sonlar (ism yoki raqamsiz): foydalanuvchilar kirganini va qarzlar yetib kelganini ko'rish uchun.
+      out.counts = {
+        users: db.prepare('SELECT COUNT(*) n FROM users WHERE tg_id IS NOT NULL').get().n,
+        debts: db.prepare('SELECT COUNT(*) n FROM debts WHERE deleted = 0').get().n,
+        pending: db.prepare("SELECT COUNT(*) n FROM debts WHERE deleted = 0 AND status = 'pending'").get().n,
+        shops: db.prepare('SELECT COUNT(*) n FROM shops').get().n,
+      };
     } catch {}
     if (bot) {
       try {
