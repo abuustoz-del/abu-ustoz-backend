@@ -296,6 +296,8 @@ function create(opts = {}) {
         debts: db.prepare('SELECT COUNT(*) n FROM debts WHERE deleted = 0').get().n,
         pending: db.prepare("SELECT COUNT(*) n FROM debts WHERE deleted = 0 AND status = 'pending'").get().n,
         shops: db.prepare('SELECT COUNT(*) n FROM shops').get().n,
+        // Qarzdagi ikkinchi tomon raqami ro'yxatdan o'tgan foydalanuvchiga mos keladimi (yetkazilishi mumkinmi).
+        matched: db.prepare('SELECT COUNT(*) n FROM debts d JOIN users u ON u.phone = d.counter AND u.tg_id IS NOT NULL WHERE d.deleted = 0').get().n,
       };
     } catch {}
     if (bot) {
