@@ -240,7 +240,8 @@ function create(opts = {}) {
   let botUsername = process.env.DP_BOT_USERNAME || '';
 
   router.post('/login/start', (req, res) => {
-    if (!bot && !testMode) return res.status(503).json({ error: 'not_configured' });
+    // Bot yo'q yoki bot nomi noma'lum (token yaroqsiz): bo'sh havola foydalanuvchini adashtiradi.
+    if ((!bot || !botUsername) && !testMode) return res.status(503).json({ error: 'not_configured' });
     if (!allowed('ip:' + clientIp(req), 20, 10 * 60 * 1000)) return res.status(429).json({ error: 'too_many' });
     if (sessions.size >= MAX_SESSIONS) return res.status(503).json({ error: 'busy' });
     const code = crypto.randomBytes(16).toString('hex');
@@ -673,7 +674,13 @@ function create(opts = {}) {
     // Zaxira nusxa yuboriladigan chat raqamini bilish uchun (faqat o'z raqamingizni ko'rsatadi).
     bot.onText(/^\/id$/, (msg) => bot.sendMessage(msg.chat.id, `Chat ID: ${msg.chat.id}`).catch(() => {}));
     bot.on('contact', (msg) => onContact(msg).catch((e) => console.error('[DP] contact:', e.message)));
-    bot.getMe().then((me) => { botUsername = me.username; console.log(`🤖 [DP] @${botUsername} tayyor`); }).catch((e) => console.error('[DP] getMe:', e.message));
+    const loadMe = (tries) => bot.getMe()
+      .then((me) => { botUsername = me.username; console.log(`🤖 [DP] @${botUsername} tayyor`); })
+      .catch((e) => {
+        console.error('[DP] getMe:', e.message);
+        if (tries > 0) { const t = setTimeout(() => loadMe(tries - 1), 30 * 1000); t.unref(); }
+      });
+    loadMe(10);
     const base = process.env.RENDER_EXTERNAL_URL || process.env.DP_PUBLIC_URL;
     if (base) {
       bot.setWebHook(`${base}/dp/webhook`, { secret_token: process.env.DP_WEBHOOK_SECRET || undefined })
