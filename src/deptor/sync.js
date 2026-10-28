@@ -38,6 +38,7 @@ const TOKEN_TTL = '400d';
 const MAX_PHOTO_BYTES = 1536 * 1024;           // bitta rasm (ilova ~200 KB gacha kichraytiradi)
 const MAX_PHOTOS_PER_DEBT = 8;
 const MAX_PHOTO_STORAGE = 800 * 1024 * 1024;   // hamma rasmlar jami (1 GB disk uchun zaxira bilan)
+const MAX_META = 8192;
 const PHOTO_KINDS = new Set(['proof', 'customer', 'document']);
 
 const normalizePhone = (p) => '+' + String(p || '').replace(/\D/g, '');
@@ -130,6 +131,8 @@ function openDb(file) {
   const cols = db.prepare('PRAGMA table_info(debts)').all().map((c) => c.name);
   if (!cols.includes('counter_name')) db.exec("ALTER TABLE debts ADD COLUMN counter_name TEXT NOT NULL DEFAULT ''");
   if (!cols.includes('shop')) db.exec('ALTER TABLE debts ADD COLUMN shop INTEGER');
+  // Nasiya savdosi: tovarlar ro'yxati va to'lov grafigi (JSON matn).
+  if (!cols.includes('meta')) db.exec("ALTER TABLE debts ADD COLUMN meta TEXT NOT NULL DEFAULT ''");
   if (!cols.includes('author_name')) db.exec("ALTER TABLE debts ADD COLUMN author_name TEXT NOT NULL DEFAULT ''");
   db.exec('CREATE INDEX IF NOT EXISTS debts_shop ON debts(shop, rev)');
   return db;
@@ -371,6 +374,15 @@ function create(opts = {}) {
         const currency = clip(op.currency, 5);
         const note = clip(op.note, 500);
         const cname = clip(op.cname, 80);
+        // meta: nasiya savdosi ma'lumoti (JSON obyekt, 8 KB gacha), bo'sh bo'lishi mumkin.
+        const meta = typeof op.meta === 'string' ? op.meta : '';
+        if (meta) {
+          if (meta.length > MAX_META) return 'bad_meta';
+          try {
+            const m = JSON.parse(meta);
+            if (!m || typeof m !== 'object' || Array.isArray(m)) return 'bad_meta';
+          } catch { return 'bad_meta'; }
+        }
         const cur = q.debt.get(ref);
         const name = myName || me;
         if (!cur) {
@@ -383,9 +395,9 @@ function create(opts = {}) {
             shownName = q.shop.get(shopId).name;
           }
           const rev = q.nextRev.get().rev;
-          db.prepare(`INSERT INTO debts(ref, creator, creator_name, author_name, shop, counter_name, counter, dir, kind, amount, currency, note, date, due, closed, status, deleted, rev)
-                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,0,?)`)
-            .run(ref, me, shownName, name, shopId, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, counter ? 'pending' : 'confirmed', rev);
+          db.prepare(`INSERT INTO debts(ref, creator, creator_name, author_name, shop, counter_name, counter, dir, kind, amount, currency, note, date, due, closed, status, deleted, rev, meta)
+                      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,0,?,?)`)
+            .run(ref, me, shownName, name, shopId, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, counter ? 'pending' : 'confirmed', rev, meta);
           audit(me, name, 'create', ref, '', { amount: op.amount, dir: op.dir, name: cname, note });
           return null;
         }
@@ -394,7 +406,7 @@ function create(opts = {}) {
         const changed = cur.counter !== counter || cur.dir !== op.dir || cur.kind !== kind
           || cur.amount !== op.amount || cur.date !== op.date || (cur.due ?? null) !== due
           || cur.currency !== currency || cur.note !== note
-          || (!cur.shop && cur.creator_name !== name) || cur.counter_name !== cname;
+          || (!cur.shop && cur.creator_name !== name) || cur.counter_name !== cname || cur.meta !== meta;
         if (!changed) return null;
         const material = cur.counter !== counter || cur.dir !== op.dir || cur.kind !== kind
           || cur.amount !== op.amount || cur.currency !== currency;
@@ -402,8 +414,8 @@ function create(opts = {}) {
         const rev = q.nextRev.get().rev;
         // Do'kon yozuvida ko'rinadigan nom do'kon nomi; shaxsiyda - egasining ismi.
         const shown = cur.shop ? cur.creator_name : name;
-        db.prepare(`UPDATE debts SET creator_name=?, counter_name=?, counter=?, dir=?, kind=?, amount=?, currency=?, note=?, date=?, due=?, status=?, rev=? WHERE ref=?`)
-          .run(shown, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, status, rev, ref);
+        db.prepare(`UPDATE debts SET creator_name=?, counter_name=?, counter=?, dir=?, kind=?, amount=?, currency=?, note=?, date=?, due=?, status=?, rev=?, meta=? WHERE ref=?`)
+          .run(shown, cname, counter, op.dir, kind, op.amount, currency, note, op.date, due, status, rev, meta, ref);
         audit(me, name, 'edit', ref, '', {
           amount: [cur.amount, op.amount], note: [cur.note, note], name: [cur.counter_name, cname],
         });
@@ -796,6 +808,7 @@ function create(opts = {}) {
         authorName: d.author_name, shop: d.shop || null,
         dir: d.dir, kind: d.kind, amount: d.amount, currency: d.currency, note: d.note,
         date: d.date, due: d.due, closed: !!d.closed, status: d.status, deleted: !!d.deleted,
+        meta: d.meta || '',
       })),
       payments: payments.map((p) => ({
         uid: p.uid, ref: p.ref, amount: p.amount, date: p.date, by: p.by_phone, deleted: !!p.deleted,

@@ -323,3 +323,27 @@ test("shaxsiy qarzni yaratuvchi tiklay oladi; do'kondan chiqqan sotuvchi do'kon 
   assert.equal(r.rejected[0].reason, 'forbidden');
   await s.close();
 });
+
+test("nasiya: meta (tovarlar va grafik) saqlanadi, do'kondosh va mijoz ko'radi; noto'g'ri meta rad etiladi", async () => {
+  const { s, t } = await setup();
+  const meta = JSON.stringify({ v: 1, type: 'sale', items: [{ n: 'Temir', q: 20, p: 5000000 }], plan: { mode: 'schedule', n: 3, first: 1762000000000, step: 'month' } });
+  let r = await s.sync(t.s1, [debt({ ref: 'SALE0001', meta })], 0, 'Sardor');
+  assert.deepEqual(r.rejected, []);
+  r = await s.sync(t.s2, [], 0);
+  assert.equal(r.debts.find((d) => d.ref === 'SALE0001').meta, meta); // do'kondosh
+  r = await s.sync(t.mijoz, [], 0);
+  assert.equal(r.debts.find((d) => d.ref === 'SALE0001').meta, meta); // mijoz chekni ko'radi
+  // tahrirlansa yangilanadi
+  const meta2 = JSON.stringify({ v: 1, type: 'sale', items: [{ n: 'Temir', q: 25, p: 5000000 }] });
+  r = await s.sync(t.s2, [debt({ ref: 'SALE0001', meta: meta2 })], 0, 'Jasur');
+  assert.deepEqual(r.rejected, []);
+  assert.equal(r.debts.find((d) => d.ref === 'SALE0001').meta, meta2);
+  // noto'g'ri meta
+  r = await s.sync(t.s1, [debt({ ref: 'SALE0002', meta: 'bu json emas' })], 0);
+  assert.equal(r.rejected[0].reason, 'bad_meta');
+  r = await s.sync(t.s1, [debt({ ref: 'SALE0003', meta: '[1,2]' })], 0);
+  assert.equal(r.rejected[0].reason, 'bad_meta');
+  r = await s.sync(t.s1, [debt({ ref: 'SALE0004', meta: JSON.stringify({ x: 'a'.repeat(9000) }) })], 0);
+  assert.equal(r.rejected[0].reason, 'bad_meta');
+  await s.close();
+});
