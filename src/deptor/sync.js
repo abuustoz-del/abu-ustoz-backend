@@ -35,6 +35,10 @@ const SESSION_TTL = 10 * 60 * 1000;
 const MAX_SESSIONS = 5000;
 const MAX_OPS = 500;
 const TOKEN_TTL = '400d';
+const MAX_PHOTO_BYTES = 1536 * 1024;           // bitta rasm (ilova ~200 KB gacha kichraytiradi)
+const MAX_PHOTOS_PER_DEBT = 8;
+const MAX_PHOTO_STORAGE = 800 * 1024 * 1024;   // hamma rasmlar jami (1 GB disk uchun zaxira bilan)
+const PHOTO_KINDS = new Set(['proof', 'customer', 'document']);
 
 const normalizePhone = (p) => '+' + String(p || '').replace(/\D/g, '');
 const isUzMobile = (p) => /^\+998\d{9}$/.test(p);
@@ -98,6 +102,17 @@ function openDb(file) {
       created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS shop_members_shop ON shop_members(shop_id);
+    CREATE TABLE IF NOT EXISTS photos(
+      uid TEXT PRIMARY KEY,
+      ref TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'proof',
+      by_phone TEXT NOT NULL,
+      size INTEGER NOT NULL DEFAULT 0,
+      has_file INTEGER NOT NULL DEFAULT 0,
+      deleted INTEGER NOT NULL DEFAULT 0,
+      rev INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS photos_ref ON photos(ref, rev);
     CREATE TABLE IF NOT EXISTS audit(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ts INTEGER NOT NULL,
@@ -139,6 +154,9 @@ function create(opts = {}) {
   const db = openDb(opts.dbFile || path.join(dataDir, 'deptor_sync.db'));
   const secret = opts.secret || loadSecret(dataDir);
   const testMode = opts.testMode ?? process.env.DP_TEST_MODE === '1';
+
+  const photoDir = path.join(dataDir, 'photos');
+  fs.mkdirSync(photoDir, { recursive: true });
 
   const router = express.Router();
   router.use(express.json({ limit: '1mb' }));
@@ -199,6 +217,9 @@ function create(opts = {}) {
     }
     for (const r of db.prepare('SELECT p.uid FROM payments p JOIN debts d ON d.ref = p.ref WHERE d.shop = ?').all(shopId)) {
       db.prepare('UPDATE payments SET rev = ? WHERE uid = ?').run(q.nextRev.get().rev, r.uid);
+    }
+    for (const r of db.prepare('SELECT ph.uid FROM photos ph JOIN debts d ON d.ref = ph.ref WHERE d.shop = ?').all(shopId)) {
+      db.prepare('UPDATE photos SET rev = ? WHERE uid = ?').run(q.nextRev.get().rev, r.uid);
     }
   }
   const MAX_SHOP_MEMBERS = 10;
@@ -296,6 +317,8 @@ function create(opts = {}) {
         debts: db.prepare('SELECT COUNT(*) n FROM debts WHERE deleted = 0').get().n,
         pending: db.prepare("SELECT COUNT(*) n FROM debts WHERE deleted = 0 AND status = 'pending'").get().n,
         shops: db.prepare('SELECT COUNT(*) n FROM shops').get().n,
+        photos: db.prepare('SELECT COUNT(*) n FROM photos WHERE deleted = 0 AND has_file = 1').get().n,
+        photoMB: Math.round(db.prepare('SELECT COALESCE(SUM(size), 0) s FROM photos WHERE deleted = 0').get().s / 1048576),
         // Qarzdagi ikkinchi tomon raqami ro'yxatdan o'tgan foydalanuvchiga mos keladimi (yetkazilishi mumkinmi).
         matched: db.prepare('SELECT COUNT(*) n FROM debts d JOIN users u ON u.phone = d.counter AND u.tg_id IS NOT NULL WHERE d.deleted = 0').get().n,
       };
@@ -445,6 +468,36 @@ function create(opts = {}) {
         audit(me, myName, 'del_pay', d.ref, cur.uid, { amount: cur.amount });
         return null;
       }
+      case 'photo': {
+        const uid = clip(op.uid, 40);
+        if (!/^[A-Za-z0-9_-]{8,40}$/.test(uid)) return 'bad_uid';
+        const d = q.debt.get(clip(op.ref, 40));
+        if (!d || d.deleted) return 'not_found';
+        if (!canAccess(me, d)) return 'forbidden';
+        const kind = PHOTO_KINDS.has(op.kind) ? op.kind : 'proof';
+        // Mijoz va hujjat rasmlari faqat yaratuvchi tomon (do'kon) uchun.
+        if (kind !== 'proof' && !onCreatorSide(me, d)) return 'forbidden';
+        const have = db.prepare('SELECT * FROM photos WHERE uid = ?').get(uid);
+        if (have) return have.by_phone === me && have.ref === d.ref ? null : 'forbidden';
+        const n = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE ref = ? AND deleted = 0').get(d.ref).n;
+        if (n >= MAX_PHOTOS_PER_DEBT) return 'too_many_photos';
+        db.prepare('INSERT INTO photos(uid, ref, kind, by_phone, size, has_file, deleted, rev) VALUES (?,?,?,?,0,0,0,?)')
+          .run(uid, d.ref, kind, me, q.nextRev.get().rev);
+        audit(me, myName, 'photo', d.ref, uid, { kind });
+        return null;
+      }
+      case 'del_photo': {
+        const ph = db.prepare('SELECT * FROM photos WHERE uid = ?').get(clip(op.uid, 40));
+        if (!ph) return null;
+        const d = q.debt.get(ph.ref);
+        if (!d) return 'not_found';
+        if (ph.by_phone !== me && !onCreatorSide(me, d)) return 'forbidden';
+        if (ph.deleted) return null;
+        db.prepare('UPDATE photos SET deleted = 1, rev = ? WHERE uid = ?').run(q.nextRev.get().rev, ph.uid);
+        try { fs.unlinkSync(path.join(photoDir, ph.uid)); } catch {}
+        audit(me, myName, 'del_photo', d.ref, ph.uid, null);
+        return null;
+      }
       case 'restore_debt': {
         const d = q.debt.get(clip(op.ref, 40));
         if (!d) return 'not_found';
@@ -454,6 +507,9 @@ function create(opts = {}) {
         // Qaytarishlar ham qayta yuborilsin (telefondagi nusxa qarz bilan birga o'chgan edi).
         for (const r of db.prepare('SELECT uid FROM payments WHERE ref = ?').all(d.ref)) {
           db.prepare('UPDATE payments SET rev = ? WHERE uid = ?').run(q.nextRev.get().rev, r.uid);
+        }
+        for (const r of db.prepare('SELECT uid FROM photos WHERE ref = ?').all(d.ref)) {
+          db.prepare('UPDATE photos SET rev = ? WHERE uid = ?').run(q.nextRev.get().rev, r.uid);
         }
         audit(me, myName, 'restore', d.ref, '', { amount: d.amount, name: d.counter_name });
         return null;
@@ -538,6 +594,9 @@ function create(opts = {}) {
   const pullDebts = db.prepare(`SELECT * FROM debts WHERE ((creator = ? AND shop IS NULL) OR counter = ? OR shop = ?) AND rev > ? ORDER BY rev LIMIT ${PULL_DEBTS}`);
   const pullPays = db.prepare(`SELECT p.* FROM payments p JOIN debts d ON d.ref = p.ref
                                WHERE ((d.creator = ? AND d.shop IS NULL) OR d.counter = ? OR d.shop = ?) AND p.rev > ? ORDER BY p.rev LIMIT ${PULL_PAYS}`);
+  const PULL_PHOTOS = opts.pullPhotos || 3000;
+  const pullPhotos = db.prepare(`SELECT ph.* FROM photos ph JOIN debts d ON d.ref = ph.ref
+                                 WHERE ((d.creator = ? AND d.shop IS NULL) OR d.counter = ? OR d.shop = ?) AND ph.rev > ? ORDER BY ph.rev LIMIT ${PULL_PHOTOS}`);
   const isReg = db.prepare('SELECT 1 FROM users WHERE phone = ? AND tg_id IS NOT NULL');
 
   // ---------- Jonli aloqa (Server-Sent Events) ----------
@@ -608,6 +667,46 @@ function create(opts = {}) {
     notifyPhones(phones);
   }
 
+  // ---------- Rasmlar ----------
+  /** Rasmni kim ko'ra oladi: oddiy (proof) - ikkala tomon; mijoz/hujjat - faqat yaratuvchi tomon. */
+  function canSeePhoto(me, ph, d) {
+    if (!d) return false;
+    return ph.kind === 'proof' ? canAccess(me, d) : onCreatorSide(me, d);
+  }
+
+  router.put('/photo/:uid', auth, express.raw({ type: () => true, limit: MAX_PHOTO_BYTES + 1024 }), (req, res) => {
+    if (!allowed('ph:' + req.phone, 90, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
+    const uid = clip(req.params.uid, 40);
+    const ph = db.prepare('SELECT * FROM photos WHERE uid = ?').get(uid);
+    if (!ph || ph.deleted || ph.by_phone !== req.phone) return res.status(404).json({ error: 'not_found' });
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length < 100 || buf.length > MAX_PHOTO_BYTES) {
+      return res.status(413).json({ error: 'bad_size' });
+    }
+    // Faqat JPEG (FF D8 FF) qabul qilinadi: boshqa fayl turlari serverga tushmasin.
+    if (buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) return res.status(415).json({ error: 'not_jpeg' });
+    const used = db.prepare('SELECT COALESCE(SUM(size), 0) AS s FROM photos WHERE deleted = 0').get().s;
+    if (used - ph.size + buf.length > MAX_PHOTO_STORAGE) return res.status(507).json({ error: 'storage_full' });
+    const tmp = path.join(photoDir, uid + '.tmp');
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, path.join(photoDir, uid));
+    db.prepare('UPDATE photos SET has_file = 1, size = ?, rev = ? WHERE uid = ?').run(buf.length, q.nextRev.get().rev, uid);
+    try { notifyAffected(req.phone, [{ op: 'photo', ref: ph.ref }]); } catch {}
+    res.json({ ok: true });
+  });
+
+  router.get('/photo/:uid', auth, (req, res) => {
+    if (!allowed('pg:' + req.phone, 240, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
+    const uid = clip(req.params.uid, 40);
+    const ph = db.prepare('SELECT * FROM photos WHERE uid = ?').get(uid);
+    const d = ph ? q.debt.get(ph.ref) : null;
+    if (!ph || ph.deleted || !ph.has_file || !canSeePhoto(req.phone, ph, d)) return res.status(404).json({ error: 'not_found' });
+    const f = path.join(photoDir, uid);
+    if (!fs.existsSync(f)) return res.status(404).json({ error: 'not_found' });
+    res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' });
+    fs.createReadStream(f).pipe(res);
+  });
+
   // ---------- Tarix va o'chirilganlar ----------
   router.get('/history', auth, (req, res) => {
     if (!allowed('hi:' + req.phone, 60, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
@@ -671,14 +770,18 @@ function create(opts = {}) {
     const shopId = myShop ? myShop.shop_id : -1;
     let debts = pullDebts.all(req.phone, req.phone, shopId, since);
     let payments = pullPays.all(req.phone, req.phone, shopId, since);
+    let photos = pullPhotos.all(req.phone, req.phone, shopId, since);
     // Natija juda katta bo'lsa, kursorni qirqilgan joyga qo'yamiz - aks holda
     // qolgan yozuvlar hech qachon kelmay qolardi. Ilova `more` bo'lsa qayta so'raydi.
     const globalMax = q.maxRev.get().rev;
     let upto = globalMax;
     if (debts.length >= PULL_DEBTS) upto = Math.min(upto, debts[debts.length - 1].rev);
     if (payments.length >= PULL_PAYS) upto = Math.min(upto, payments[payments.length - 1].rev);
+    if (photos.length >= PULL_PHOTOS) upto = Math.min(upto, photos[photos.length - 1].rev);
     debts = debts.filter((d) => d.rev <= upto);
     payments = payments.filter((p) => p.rev <= upto);
+    // Mijoz/hujjat rasmlari ikkinchi tomonga (mijozga) yuborilmaydi.
+    photos = photos.filter((ph) => ph.rev <= upto && canSeePhoto(req.phone, ph, q.debt.get(ph.ref)));
     const phones = new Set();
     for (const d of debts) { phones.add(d.creator); phones.add(d.counter); }
     phones.delete(req.phone);
@@ -696,6 +799,9 @@ function create(opts = {}) {
       })),
       payments: payments.map((p) => ({
         uid: p.uid, ref: p.ref, amount: p.amount, date: p.date, by: p.by_phone, deleted: !!p.deleted,
+      })),
+      photos: photos.map((ph) => ({
+        uid: ph.uid, ref: ph.ref, kind: ph.kind, by: ph.by_phone, deleted: !!ph.deleted, hasFile: !!ph.has_file,
       })),
       registered,
       rejected,
@@ -767,6 +873,13 @@ function create(opts = {}) {
         .catch((e) => console.error('[DP] setWebHook:', e.message));
     }
   }
+
+  // Katta so'rov (masalan juda katta rasm) yoki noto'g'ri JSON: toza javob, xato izisiz.
+  router.use((err, req, res, next) => {
+    if (err && err.type === 'entity.too.large') return res.status(413).json({ error: 'too_large' });
+    if (err && err.type === 'entity.parse.failed') return res.status(400).json({ error: 'bad_json' });
+    return next(err);
+  });
 
   let backups = null;
   /** Kunlik zaxira: faqat asosiy serverda (testlarda chaqirilmaydi). */
