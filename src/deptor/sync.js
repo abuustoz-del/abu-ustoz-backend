@@ -540,6 +540,74 @@ function create(opts = {}) {
                                WHERE ((d.creator = ? AND d.shop IS NULL) OR d.counter = ? OR d.shop = ?) AND p.rev > ? ORDER BY p.rev LIMIT ${PULL_PAYS}`);
   const isReg = db.prepare('SELECT 1 FROM users WHERE phone = ? AND tg_id IS NOT NULL');
 
+  // ---------- Jonli aloqa (Server-Sent Events) ----------
+  // Ilova ochiq paytida ulanib turadi: o'zgarish bo'lsa darhol "change" yuboriladi va
+  // ilova sinxronlashni boshlaydi (60 soniya kutmaydi).
+  const streams = new Map(); // telefon -> Set<res>
+  const MAX_STREAMS_PER_PHONE = 5;
+
+  router.get('/events', auth, (req, res) => {
+    const set = streams.get(req.phone) || new Set();
+    if (set.size >= MAX_STREAMS_PER_PHONE) {
+      // Eng eskisini yopamiz (ilova qayta ulangan bo'lishi mumkin).
+      const oldest = set.values().next().value;
+      try { oldest.end(); } catch {}
+      set.delete(oldest);
+    }
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    res.write('retry: 3000\n\nevent: hello\ndata: 1\n\n');
+    set.add(res);
+    streams.set(req.phone, set);
+    const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 20 * 1000);
+    req.on('close', () => {
+      clearInterval(beat);
+      set.delete(res);
+      if (!set.size) streams.delete(req.phone);
+    });
+  });
+
+  function notifyPhones(phones) {
+    for (const ph of phones) {
+      const set = streams.get(ph);
+      if (!set) continue;
+      for (const r of set) { try { r.write('event: change\ndata: 1\n\n'); } catch {} }
+    }
+  }
+
+  /** Muvaffaqiyatli bajarilgan amallardan ta'sirlangan telefonlarni topadi va xabar beradi. */
+  function notifyAffected(sender, ops) {
+    const phones = new Set();
+    const addShop = (shopId) => {
+      if (!shopId) return;
+      for (const m of q.members.all(shopId)) phones.add(m.phone);
+    };
+    for (const op of ops) {
+      if (!op || typeof op !== 'object') continue;
+      let ref = op.ref ? clip(op.ref, 40) : '';
+      if (!ref && op.uid) { const pay = q.pay.get(clip(op.uid, 40)); if (pay) ref = pay.ref; }
+      if (ref) {
+        const d = q.debt.get(ref);
+        if (d) {
+          if (d.counter) phones.add(d.counter);
+          if (d.shop) addShop(d.shop); else phones.add(d.creator);
+        }
+      }
+      if (String(op.op || '').startsWith('shop_')) {
+        const mine = q.member.get(sender);
+        if (mine) addShop(mine.shop_id);
+        if (op.phone) phones.add(normalizePhone(op.phone));
+      }
+    }
+    phones.delete(sender);
+    notifyPhones(phones);
+  }
+
   // ---------- Tarix va o'chirilganlar ----------
   router.get('/history', auth, (req, res) => {
     if (!allowed('hi:' + req.phone, 60, 60 * 1000)) return res.status(429).json({ error: 'too_many' });
@@ -584,19 +652,21 @@ function create(opts = {}) {
     const since = Number.isSafeInteger(body.since) && body.since >= 0 ? body.since : 0;
     const name = clip(body.name, 80);
     const rejected = [];
+    const applied = [];
     try {
       db.transaction(() => {
         q.touch.run(Date.now(), name, name, req.phone);
         const myName = name || q.user.get(req.phone).name;
         ops.forEach((op, i) => {
           const why = applyOp(req.phone, myName, op);
-          if (why) rejected.push({ i, reason: why });
+          if (why) rejected.push({ i, reason: why }); else applied.push(op);
         });
       })();
     } catch (e) {
       console.error('[DP] sync:', e.message);
       return res.status(500).json({ error: 'server' });
     }
+    if (applied.length) { try { notifyAffected(req.phone, applied); } catch (e) { console.error('[DP] notify:', e.message); } }
     const myShop = activeShop(req.phone);
     const shopId = myShop ? myShop.shop_id : -1;
     let debts = pullDebts.all(req.phone, req.phone, shopId, since);
@@ -717,7 +787,12 @@ function create(opts = {}) {
 
   return {
     router, db, sessions, initBot, startBackups,
-    close() { clearInterval(cleaner); if (backups) backups.stop(); try { db.close(); } catch {} },
+    close() {
+      clearInterval(cleaner);
+      if (backups) backups.stop();
+      for (const set of streams.values()) for (const r of set) { try { r.end(); } catch {} }
+      try { db.close(); } catch {}
+    },
     _test: { completeLogin, issueToken, upsertUser },
   };
 }
