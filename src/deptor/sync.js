@@ -36,10 +36,15 @@ const MAX_SESSIONS = 5000;
 const MAX_OPS = 500;
 const TOKEN_TTL = '400d';
 const MAX_PHOTO_BYTES = 1536 * 1024;           // bitta rasm (ilova ~200 KB gacha kichraytiradi)
-const MAX_PHOTOS_PER_DEBT = 8;
+const MAX_PHOTOS_PER_DEBT = 12;
 const MAX_PHOTO_STORAGE = 800 * 1024 * 1024;   // hamma rasmlar jami (1 GB disk uchun zaxira bilan)
 const MAX_META = 8192;
-const PHOTO_KINDS = new Set(['proof', 'customer', 'document']);
+// proof - dalil (ikkala tomon ko'radi); qolganlari faqat yaratuvchi tomon (do'kon) uchun:
+// customer - mijoz rasmi, document - boshqa hujjat, id - ID pasport, passport - chet el pasporti,
+// license - haydovchilik guvohnomasi, techpass - avtomobil texnik pasporti.
+const PHOTO_KINDS = new Set(['proof', 'customer', 'document', 'id', 'passport', 'license', 'techpass']);
+// Nasiya uchun majburiy qilinishi mumkin bo'lgan talablar (do'kon egasi tanlaydi).
+const SALE_REQS = new Set(['id', 'passport', 'license', 'techpass', 'phone']);
 
 const normalizePhone = (p) => '+' + String(p || '').replace(/\D/g, '');
 const isUzMobile = (p) => /^\+998\d{9}$/.test(p);
@@ -131,6 +136,8 @@ function openDb(file) {
   const cols = db.prepare('PRAGMA table_info(debts)').all().map((c) => c.name);
   if (!cols.includes('counter_name')) db.exec("ALTER TABLE debts ADD COLUMN counter_name TEXT NOT NULL DEFAULT ''");
   if (!cols.includes('shop')) db.exec('ALTER TABLE debts ADD COLUMN shop INTEGER');
+  const shopCols = db.prepare('PRAGMA table_info(shops)').all().map((c) => c.name);
+  if (!shopCols.includes('sale_req')) db.exec("ALTER TABLE shops ADD COLUMN sale_req TEXT NOT NULL DEFAULT ''");
   // Nasiya savdosi: tovarlar ro'yxati va to'lov grafigi (JSON matn).
   if (!cols.includes('meta')) db.exec("ALTER TABLE debts ADD COLUMN meta TEXT NOT NULL DEFAULT ''");
   if (!cols.includes('author_name')) db.exec("ALTER TABLE debts ADD COLUMN author_name TEXT NOT NULL DEFAULT ''");
@@ -545,6 +552,14 @@ function create(opts = {}) {
         db.prepare("INSERT INTO shop_members(phone, shop_id, role, status, created_at) VALUES (?,?, 'owner','active',?)").run(me, id, Date.now());
         return null;
       }
+      case 'shop_req': {
+        const m = activeShop(me);
+        if (!m || m.role !== 'owner') return 'forbidden';
+        if (!Array.isArray(op.req)) return 'bad_req';
+        const req = [...new Set(op.req.filter((x) => SALE_REQS.has(x)))];
+        db.prepare('UPDATE shops SET sale_req = ? WHERE id = ?').run(JSON.stringify(req), m.shop_id);
+        return null;
+      }
       case 'shop_invite': {
         const m = activeShop(me);
         if (!m || m.role !== 'owner') return 'forbidden';
@@ -594,7 +609,9 @@ function create(opts = {}) {
     if (!m) return null;
     const sh = q.shop.get(m.shop_id);
     if (!sh) return null;
-    const info = { id: sh.id, name: sh.name, role: m.role, status: m.status, owner: sh.owner };
+    let req = [];
+    try { req = JSON.parse(sh.sale_req || '[]'); } catch {}
+    const info = { id: sh.id, name: sh.name, role: m.role, status: m.status, owner: sh.owner, req };
     if (m.status === 'active') {
       info.members = q.members.all(m.shop_id).map((x) => ({ phone: x.phone, name: x.name || '', role: x.role, status: x.status }));
     }

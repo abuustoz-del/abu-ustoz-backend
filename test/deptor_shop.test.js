@@ -347,3 +347,17 @@ test("nasiya: meta (tovarlar va grafik) saqlanadi, do'kondosh va mijoz ko'radi; 
   assert.equal(r.rejected[0].reason, 'bad_meta');
   await s.close();
 });
+
+test("nasiya talablari: faqat ega belgilaydi, a'zolarga yetib boradi, noto'g'ri qiymatlar tashlanadi", async () => {
+  const { s, t } = await setup();
+  let r = await s.sync(t.s1, [{ op: 'shop_req', req: ['id'] }], 0);
+  assert.equal(r.rejected[0].reason, 'forbidden'); // sotuvchi o'zgartira olmaydi
+  r = await s.sync(t.ega, [{ op: 'shop_req', req: ['id', 'techpass', 'phone', 'yolgon', 'id'] }], 0);
+  assert.deepEqual(r.rejected, []);
+  assert.deepEqual(r.shop.req, ['id', 'techpass', 'phone']); // takror va noto'g'ri tashlandi
+  r = await s.sync(t.s1, [], 0);
+  assert.deepEqual(r.shop.req, ['id', 'techpass', 'phone']); // a'zoga ham yetdi
+  r = await s.sync(t.ega, [{ op: 'shop_req', req: 'id' }], 0);
+  assert.equal(r.rejected[0].reason, 'bad_req');
+  await s.close();
+});

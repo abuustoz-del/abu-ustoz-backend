@@ -189,3 +189,32 @@ test('rasm: boshqa qarzning rasmi uchun uid takrorlanmaydi; takroriy yuborish za
   assert.equal(r.rejected[0].reason, 'forbidden');
   await s.close();
 });
+
+test("hujjat turlari (ID, chet el pasporti, guvohnoma, texnik pasport) faqat do'kon tomoniga ko'rinadi", async () => {
+  const s = await boot();
+  const ega = await s.login(EGA);
+  const sot = await s.login(SOT);
+  const mijoz = await s.login(MIJOZ);
+  await s.sync(sot, [], 0, 'Sardor');
+  await s.sync(ega, [{ op: 'shop_create', name: "Avto qismlar" }]);
+  await s.sync(ega, [{ op: 'shop_invite', phone: SOT }]);
+  await s.sync(sot, [{ op: 'shop_accept' }]);
+  const kinds = ['id', 'passport', 'license', 'techpass'];
+  const ops = [debt({ ref: 'DOCS0001', counter: MIJOZ, shop: true })];
+  kinds.forEach((k, i) => ops.push(photoOp({ uid: 'DOCK00' + (i + 1) + 'XXXX', ref: 'DOCS0001', kind: k })));
+  const r = await s.sync(sot, ops, 0, 'Sardor');
+  assert.deepEqual(r.rejected, []);
+  for (let i = 0; i < kinds.length; i++) await s.put('DOCK00' + (i + 1) + 'XXXX', sot, jpeg(300, i + 1));
+  // do'kondosh to'rttasini ham ko'radi
+  const re = await s.sync(ega, [], 0);
+  assert.equal(re.photos.length, 4);
+  assert.deepEqual(re.photos.map((p) => p.kind).sort(), [...kinds].sort());
+  // mijozga hech biri yuborilmaydi va yuklab bo'lmaydi
+  const rm = await s.sync(mijoz, [], 0);
+  assert.equal(rm.photos.length, 0);
+  for (let i = 0; i < kinds.length; i++) assert.equal((await s.get('DOCK00' + (i + 1) + 'XXXX', mijoz)).status, 404);
+  // mijoz bunday hujjat qo'sha olmaydi
+  const bad = await s.sync(mijoz, [photoOp({ uid: 'DOCBAD0001', ref: 'DOCS0001', kind: 'techpass' })], 0);
+  assert.equal(bad.rejected[0].reason, 'forbidden');
+  await s.close();
+});
