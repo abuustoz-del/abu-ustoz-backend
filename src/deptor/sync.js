@@ -313,6 +313,25 @@ function create(opts = {}) {
     res.sendStatus(200);
   });
 
+  // Shartnoma shabloni: yurist matnni o'zgartirsa ilovani qayta chiqarish shart emas.
+  // Manba: DP_CONTRACT_TEMPLATE (JSON) yoki <DATA_DIR>/contract_template.json. Yo'q bo'lsa 404
+  // (ilova ichki shablondan foydalanadi).
+  router.get('/contract-template', (req, res) => {
+    let t = null;
+    try {
+      const raw = opts.templateFile
+        ? fs.readFileSync(opts.templateFile, 'utf8')
+        : process.env.DP_CONTRACT_TEMPLATE
+          || fs.readFileSync(path.join(dataDir, 'contract_template.json'), 'utf8');
+      t = JSON.parse(raw);
+    } catch {}
+    const ok = t && Number.isInteger(t.version)
+      && ['uz', 'ru'].every((l) => t[l] && typeof t[l].title === 'string' && Array.isArray(t[l].sections));
+    if (!ok) return res.status(404).json({ error: 'no_template' });
+    res.set('Cache-Control', 'no-store');
+    res.json(t);
+  });
+
   router.get('/health', async (req, res) => {
     const out = { bot: !!bot, botUsername, testMode, sessions: sessions.size };
     // Diagnostika: Telegram aloqasi va zaxira holati (maxfiy ma'lumotlarsiz).
