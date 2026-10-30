@@ -158,11 +158,11 @@ test('rasm: bitta qarzga 8 tadan ko\'p qo\'shib bo\'lmaydi', async () => {
   const ega = await s.login(EGA);
   await s.sync(ega, [debt()], 0, 'Ega');
   const ops = [];
-  for (let i = 0; i < 9; i++) ops.push(photoOp({ uid: 'MANYPH' + String(i).padStart(4, '0') }));
+  for (let i = 0; i < 13; i++) ops.push(photoOp({ uid: 'MANYPH' + String(i).padStart(4, '0') }));
   const r = await s.sync(ega, ops, 0);
   assert.equal(r.rejected.length, 1);
   assert.equal(r.rejected[0].reason, 'too_many_photos');
-  assert.equal(r.photos.length, 8);
+  assert.equal(r.photos.length, 12);
   await s.close();
 });
 
