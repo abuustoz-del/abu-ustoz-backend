@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deptor — Maxfiylik siyosati</title>
+<meta name="description" content="Deptor ilovasining maxfiylik siyosati.">
+<link rel="icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground: #F6F5F1;
+    --surface: #FFFFFF;
+    --text: #21242B;
+    --muted: #676D7A;
+    --accent: #3F5A28;
+    --accent-2: #2A3B19;
+    --border: #E3E1DA;
+    --brand-bg: #DDDCD8;
+    --shadow: 0 1px 2px rgba(33,36,43,.05), 0 8px 28px rgba(33,36,43,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #131512;
+      --surface: #1B1E1A;
+      --text: #E9EAE6;
+      --muted: #9EA59A;
+      --accent: #A9C98A;
+      --accent-2: #C6DDB0;
+      --border: #2A2F28;
+      --brand-bg: #20251E;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #131512;
+    --surface: #1B1E1A;
+    --text: #E9EAE6;
+    --muted: #9EA59A;
+    --accent: #A9C98A;
+    --accent-2: #C6DDB0;
+    --border: #2A2F28;
+    --brand-bg: #20251E;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px 96px; }
+  header.hero { background: var(--brand-bg); border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+  .hero-inner { max-width: 720px; margin: 0 auto; padding: 48px 16px 36px; }
+  .wordmark {
+    font-family: "Sora", sans-serif; font-weight: 700; font-size: 40px;
+    letter-spacing: -.02em; line-height: 1; margin: 0 0 20px; color: var(--accent-2);
+  }
+  .eyebrow {
+    font-family: "Sora", sans-serif; text-transform: uppercase; letter-spacing: .16em;
+    font-size: 12px; font-weight: 600; color: var(--accent); margin: 0 0 10px;
+  }
+  h1 {
+    font-family: "Sora", sans-serif; font-weight: 600; font-size: clamp(28px, 5vw, 38px);
+    line-height: 1.12; letter-spacing: -.02em; text-wrap: balance; margin: 0 0 14px;
+  }
+  .meta { color: var(--muted); font-size: 14.5px; margin: 0; }
+  .langs { margin-top: 18px; font-size: 14.5px; }
+  .lead { font-size: 19px; line-height: 1.6; margin: 0 0 8px; }
+  .highlight {
+    display: flex; gap: 14px; align-items: flex-start; background: var(--surface);
+    border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); margin: 28px 0 8px;
+  }
+  .highlight .mark { color: var(--accent); flex: 0 0 auto; margin-top: 2px; }
+  .highlight p { margin: 0; font-size: 16px; }
+  section { margin-top: 36px; }
+  h2 {
+    font-family: "Sora", sans-serif; font-weight: 600; font-size: 21px; letter-spacing: -.01em;
+    margin: 0 0 6px; display: flex; align-items: baseline; gap: 12px;
+  }
+  h2 .n { font-size: 13px; color: var(--accent); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  section p { margin: 10px 0; }
+  p.note { color: var(--muted); font-size: 15px; }
+  ul { margin: 10px 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { font-weight: 600; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 56px 0 0; }
+  .part-title {
+    font-family: "Sora", sans-serif; font-weight: 600; font-size: 26px;
+    letter-spacing: -.02em; margin: 48px 0 0;
+  }
+  footer { margin-top: 28px; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="wordmark">Deptor</p>
+    <p class="eyebrow">Maxfiylik siyosati · Privacy policy</p>
+    <h1>Qarz va xarajatlaringiz sizning telefoningizda</h1>
+    <p class="meta">Amal qilish sanasi: 2026-yil 13-oktabr · Oxirgi yangilanish: 2026-yil 11-noyabr</p>
+    <p class="langs"><a href="#uz">O'zbekcha</a> · <a href="#en">English</a></p>
+  </div>
+</header>
+
+<div class="wrap">
+<div id="uz">
+  <p class="lead">
+    <strong>Deptor</strong> — kundalik xarajatlar, berilgan va olingan qarzlar hamda
+    avans/to'lovlarni yozib borish va hafta, oy, yil yakunida hisobot olish uchun
+    mobil ilova. Ushbu hujjat ilova ma'lumotlaringizga qanday munosabatda bo'lishini
+    tushuntiradi.
+  </p>
+
+  <div class="highlight">
+    <span class="mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </span>
+    <p><strong>Qisqasi:</strong> yozuvlaringiz qurilmangizda saqlanadi. Ixtiyoriy
+    "Do'stlar bilan bog'lash" (Telegram orqali kirish) yoqilmasa, hech narsa serverga
+    yuborilmaydi. Yoqsangiz, faqat telefon raqami ko'rsatilgan qarzlar va ularning
+    qaytarishlari qarshi tomonga ko'rsatish uchun serverga yuboriladi. Reklama va
+    kuzatuvchi analitika yo'q.</p>
+  </div>
+
+  <section>
+    <h2><span class="n">01</span> Qanday ma'lumotlar saqlanadi</h2>
+    <p>Siz ilovaga kiritgan ma'lumotlar:</p>
+    <ul>
+      <li>xarajatlar: summa, toifa, izoh va sana;</li>
+      <li>qarzlar va avans/to'lovlar: shaxsning ismi, ixtiyoriy telefon raqami, summa,
+      sana, qaytarish muddati va izoh;</li>
+      <li>sozlamalar: til, valyuta, eslatma vaqti va SMS'da ko'rinadigan ismingiz.</li>
+    </ul>
+    <p>Bu ma'lumotlar <strong>qurilmangiz ichidagi</strong> ma'lumotlar bazasida
+    saqlanadi. Xarajatlar va kirimlar hech qachon serverga yuborilmaydi. Qarzlar faqat
+    quyidagi ixtiyoriy bog'lash yoqilgan va qarzga telefon raqami kiritilgan bo'lsagina
+    yuboriladi.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span> Do'stlar bilan bog'lash (ixtiyoriy)</h2>
+    <p>Sozlamalarda Telegram orqali kirsangiz, qarzingiz qarshi tomonning Deptor
+    ilovasida ham ko'rinadi (u tasdiqlaydi yoki rad etadi). Buning uchun:</p>
+    <ul>
+      <li>Telegram'da botimizga o'z raqamingizni ulashasiz; bot tasdiqlangan telefon
+      raqamingiz va Telegram ID raqamingizni oladi (kirishni tasdiqlash uchun).</li>
+      <li>Serverga yuboriladi: telefon raqamingiz, SMS'dagi ismingiz, telefon raqami kiritilgan
+      qarzlar (qarshi tomon raqami, summa, valyuta, sana, muddat, izoh, yorlig'ingiz) va
+      ularning qaytarishlari.</li>
+      <li>Qarshi tomon faqat shu qarz va uning qaytarishlarini, hamda sizning ismingiz va
+      raqamingizni ko'radi. Boshqa yozuvlaringizni ko'rmaydi.</li>
+      <li>Ma'lumotlar faqat shu funksiya ishlashi uchun saqlanadi, sotilmaydi, reklamaga
+      ishlatilmaydi.</li>
+      <li>Yozuvni o'chirsangiz, u serverda o'chirilgan deb belgilanadi va qarshi tomondan
+      ham yo'qoladi. "Chiqish" bosilganda kirish bekor qilinadi. Serverdagi barcha
+      ma'lumotlaringizni to'liq o'chirish uchun <a href="mailto:abuustoz@gmail.com">abuustoz@gmail.com</a>
+      ga yozing.</li>
+      <li>Aloqa shifrlangan (HTTPS) kanal orqali o'tadi.</li>
+      <li><strong>Do'kon rejimi:</strong> do'kon yaratib sotuvchilarni qo'shsangiz, "do'kon qarzi" deb
+      belgilangan yozuvlarni do'konning barcha a'zolari ko'radi va o'zgartira oladi. A'zo bo'lish uchun
+      taklifni qabul qilish kerak. A'zo do'kondan chiqarilsa, u do'kon qarzlarini ko'rmay qoladi.</li>
+      <li><strong>O'zgarishlar tarixi:</strong> serverda qarzlar bo'yicha kim va qachon nima qilgani
+      (yozdi, tahrirladi, o'chirdi, qaytarish kiritdi) yozib boriladi. Tarixni qarzning yaratuvchi tomoni
+      ko'ra oladi. O'chirilgan qarzlar serverda saqlanadi va ularni tiklash mumkin.</li>
+      <li><strong>Rasmlar:</strong> qarzga rasm biriktirsangiz (masalan, qarz olgan odam, hujjat yoki
+      dalil), u telefonda saqlanadi. Agar qarz boshqa odam yoki do'kon bilan bog'langan bo'lsa, rasm serverga ham
+      yuklanadi va faqat o'sha qarzga ruxsati bor odamlarga ko'rinadi. "Mijoz" va "Hujjat" rasmlari faqat
+      do'kon a'zolariga ko'rinadi, qarshi tomonga yuborilmaydi. Rasm olish uchun ilova telefonning
+      standart kamera yoki galereya oynasini ochadi, ilova kamera yoki galereyaga doimiy ruxsat
+      so'ramaydi. Rasmni o'chirsangiz, u serverdan ham o'chadi.</li>
+      <li><strong>Nasiya va mijoz hujjatlari:</strong> do'kon rejimida nasiya (bo'lib to'lash) savdosini
+      yozsangiz, tovarlar, to'lov grafigi va ixtiyoriy ravishda mijozning hujjat raqamlari (ID pasport,
+      chet el pasporti, haydovchilik guvohnomasi, avtomobil raqami va texnik pasport raqami, manzil) hamda
+      shu hujjatlarning rasmlari saqlanadi. Qaysi hujjatlar majburiyligini do'kon egasi belgilaydi. Bu
+      ma'lumotlar faqat do'kon a'zolariga ko'rinadi, mijozga va boshqa tomonlarga yuborilmaydi, reklama
+      yoki boshqa maqsadda ishlatilmaydi. Ilova ularni davlat organlariga (jumladan MIBga) yubormaydi.
+      Shartnoma (PDF) namunasi telefoningizda yaratiladi va uni faqat siz o'zingiz tanlagan ilova orqali
+      yuborasiz.</li>
+      <li><strong>Zaxira nusxa:</strong> server ma'lumotlari har kuni nusxalanadi. Tashqi nusxa shifrlangan
+      holda dasturchining shaxsiy Telegram chatiga yuboriladi. Nusxalar ma'lumotlarni tiklash uchun
+      ishlatiladi, boshqa maqsadda emas.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span> SMS xabarlar</h2>
+    <p>Qarz yoki avans qo'shayotganda telefon raqamini kiritib, "SMS yuborish"ni
+    tanlasangiz, ilova shu raqamga <strong>sizning SIM kartangizdan</strong> bitta SMS
+    yuboradi. SMS'da quyidagilar bo'ladi: siz kiritgan ismingiz, summa, sana, qaytarish
+    muddati (bo'lsa) va yozuvni qabul qiluvchining Deptor ilovasiga qo'shish uchun havola.</p>
+    <ul>
+      <li>SMS faqat siz tanlagan raqamga va faqat siz tasdiqlaganda yuboriladi.</li>
+      <li>SMS narxi mobil operatoringiz tarifiga ko'ra hisoblanadi.</li>
+      <li>Ilova kelgan SMS'laringizni <strong>o'qimaydi</strong> va SMS tarixiga kirmaydi.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span> Kontaktlar</h2>
+    <p>Telefon raqamini kontaktlardan tanlash uchun ilova Android'ning standart kontakt
+    tanlash oynasini ochadi. Ilovaga faqat siz tanlagan bitta kontaktning ismi va raqami
+    beriladi. Ilova kontaktlar ro'yxatingizni <strong>o'qimaydi va saqlamaydi</strong>
+    va buning uchun ruxsat so'ramaydi.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span> Havolalar</h2>
+    <p>SMS'dagi havola (<code>deptor.uz</code>) qabul qiluvchining telefonida Deptor
+    ilovasini ochadi va yozuvni qo'shishni taklif qiladi. Havolada faqat SMS matnidagi
+    ma'lumotlar (ism, summa, sana) bor. Havola brauzerda ochilsa, sayt odatdagidek
+    texnik so'rov ma'lumotlarini (IP manzil, brauzer turi) qayd etishi mumkin; biz ulardan
+    foydalanuvchilarni aniqlash uchun foydalanmaymiz.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">06</span> Ruxsatlar</h2>
+    <ul>
+      <li><strong>SMS yuborish</strong> — siz tanlagan raqamga qarz/avans haqida xabar
+      yuborish uchun.</li>
+      <li><strong>Bildirishnomalar</strong> — kundalik eslatma, hafta/oy/yil hisobotlari va
+      qarz muddati eslatmasi uchun.</li>
+      <li><strong>Telefon yoqilganda ishga tushish</strong> — telefon qayta yoqilganda
+      rejalashtirilgan eslatmalarni tiklash uchun.</li>
+    </ul>
+    <p class="note">Bu ruxsatlarning hech biri ma'lumot yig'ish yoki uzatish uchun
+    ishlatilmaydi.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">07</span> Uchinchi tomonlar, reklama va analitika</h2>
+    <p>Ilovada reklama tarmoqlari, kuzatuvchi analitika yoki xatolarni yig'uvchi tashqi
+    xizmatlar <strong>yo'q</strong>. Ma'lumotlaringiz sotilmaydi. Server ishlashi uchun
+    Telegram (kirish) va xosting provayderi (Render) xizmatlaridan foydalaniladi.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">08</span> Ma'lumotlarni o'chirish</h2>
+    <p>Har qanday yozuvni ilovaning o'zida o'chirishingiz mumkin. Ilovani telefondan
+    o'chirsangiz, telefondagi ma'lumotlar o'chadi. Serverda bog'langan qarzlar nusxasi
+    qolgan bo'lsa, uni o'chirish uchun 11-bo'limdagi manzilga yozing.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">09</span> Bolalar</h2>
+    <p>Ilova moliyaviy yozuvlar uchun mo'ljallangan va 13 yoshgacha bo'lgan bolalarga
+    qaratilmagan. Biz hech kimdan shaxsiy ma'lumot to'plamaymiz.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">10</span> O'zgartirishlar</h2>
+    <p>Ushbu siyosat yangilanishi mumkin. O'zgarishlar shu sahifada yangi "amal qilish
+    sanasi" bilan e'lon qilinadi.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">11</span> Bog'lanish</h2>
+    <p>Savollar bo'lsa: <a href="mailto:abuustoz@gmail.com">abuustoz@gmail.com</a></p>
+  </section>
+</div>
+
+<hr>
+
+<div id="en" lang="en">
+  <p class="part-title">English</p>
+  <p class="lead">
+    <strong>Deptor</strong> is a mobile app for recording daily expenses, money you lent or
+    borrowed, and advances/payments, with weekly, monthly and yearly reports. This policy
+    explains how the app handles your data.
+  </p>
+
+  <div class="highlight">
+    <span class="mark" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </span>
+    <p><strong>In short:</strong> your records are stored on your device. Unless you turn on the optional
+    "Link with friends" feature (sign-in via Telegram), nothing is sent to a server. If you
+    do, only debts that have a phone number, and their repayments, are sent so the other
+    person can see them. No ads, no tracking analytics.</p>
+  </div>
+
+  <section>
+    <h2><span class="n">01</span> Data stored</h2>
+    <ul>
+      <li>Expenses: amount, category, note and date.</li>
+      <li>Debts and advances/payments: the person's name, an optional phone number, amount,
+      date, due date and note.</li>
+      <li>Settings: language, currency, reminder time and the name shown in your SMS.</li>
+    </ul>
+    <p>This data is stored <strong>in a database on your device</strong>. Expenses and income
+    are never sent to a server. Debts are sent only if the optional linking below is on and
+    a phone number was entered for the debt.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span> Link with friends (optional)</h2>
+    <p>If you sign in with Telegram in Settings, your debt also appears in the other person's
+    Deptor app (they confirm or reject it). To make this work:</p>
+    <ul>
+      <li>You share your number with our Telegram bot; it receives your verified phone number
+      and Telegram ID (to confirm sign-in).</li>
+      <li>Sent to the server: your phone number, your name as shown in SMS, debts that have a
+      phone number (the other party's number, amount, currency, date, due date, note, your
+      label) and their repayments.</li>
+      <li>The other party sees only that debt and its repayments, plus your name and number.
+      They do not see your other records.</li>
+      <li>The data is stored only to run this feature, is never sold and is not used for ads.</li>
+      <li>When you delete a record, it is marked deleted on the server and disappears for the
+      other party too. "Sign out" revokes your sign-in. To have all your server-side data
+      fully erased, email <a href="mailto:abuustoz@gmail.com">abuustoz@gmail.com</a>.</li>
+      <li>Communication uses an encrypted (HTTPS) connection.</li>
+      <li><strong>Shop mode:</strong> if you create a shop and add sellers, records marked as "shop debt" are
+      visible and editable by all shop members. Joining requires accepting an invitation. A removed member
+      stops seeing the shop's debts.</li>
+      <li><strong>Change history:</strong> the server records who did what and when on a debt (created,
+      edited, deleted, added a repayment). The history is visible to the debt's creating side. Deleted debts are
+      kept on the server and can be restored.</li>
+      <li><strong>Photos:</strong> if you attach a photo to a debt (for example the borrower, a document or
+      proof), it is stored on your phone. If the debt is linked with another person or a shop, the photo is also
+      uploaded to the server and shown only to people who have access to that debt. "Customer" and "Document"
+      photos are visible only to shop members and are not sent to the other party. To take a photo, the app
+      opens the phone's standard camera or gallery picker and does not request ongoing camera or gallery
+      permission. If you delete a photo, it is removed from the server as well.</li>
+      <li><strong>Credit sales and customer documents:</strong> in shop mode, when you record a credit
+      (installment) sale, the items, the payment schedule and, optionally, the customer's document details
+      (ID card, foreign passport, driver's license, vehicle plate and registration numbers, address) and
+      photos of those documents are stored. The shop owner decides which documents are required. This data
+      is visible only to shop members, is not sent to the customer or other parties, and is not used for
+      advertising or any other purpose. The app does not send it to any authority. A sample contract (PDF) is
+      generated on your phone and you share it only through the app you choose.</li>
+      <li><strong>Backups:</strong> server data is backed up daily. An off-site copy is sent, encrypted, to
+      the developer's private Telegram chat. Backups are used only to restore data.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span> SMS messages</h2>
+    <p>If you enter a phone number for a debt or advance and choose "Send SMS", the app sends
+    one SMS to that number <strong>from your own SIM card</strong>. It contains your name as
+    you entered it, the amount, the date, the due date (if any) and a link that lets the
+    recipient add the record to their own Deptor app.</p>
+    <ul>
+      <li>SMS is sent only to the number you choose and only when you confirm.</li>
+      <li>Your mobile operator charges for the SMS according to your plan.</li>
+      <li>The app does <strong>not read</strong> your incoming messages or SMS history.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span> Contacts</h2>
+    <p>To pick a phone number, the app opens Android's standard contact picker. Only the name
+    and number of the single contact you select are passed to the app. The app does
+    <strong>not read or store</strong> your contact list and does not request contacts
+    permission.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span> Links</h2>
+    <p>The link in the SMS (<code>deptor.uz</code>) opens Deptor on the recipient's phone and
+    offers to add the record. It contains only the information already in the SMS text
+    (name, amount, date). If the link is opened in a browser, the website may log standard
+    technical request data (IP address, browser type); we do not use it to identify
+    users.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">06</span> Permissions</h2>
+    <ul>
+      <li><strong>Send SMS</strong> — to send a debt/advance message to the number you choose.</li>
+      <li><strong>Notifications</strong> — daily reminder, week/month/year reports and due-date
+      reminders.</li>
+      <li><strong>Run at startup</strong> — to restore scheduled reminders after a reboot.</li>
+    </ul>
+    <p class="note">None of these permissions is used to collect or transmit data.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">07</span> Third parties, ads and analytics</h2>
+    <p>The app contains <strong>no</strong> advertising networks, tracking analytics or
+    external crash-reporting services. Your data is never sold. The linking feature relies on
+    Telegram (sign-in) and a hosting provider (Render).</p>
+  </section>
+
+  <section>
+    <h2><span class="n">08</span> Deleting data</h2>
+    <p>You can delete any record inside the app. Uninstalling the app deletes the data on your
+    phone. If linked debts remain on the server, email the address in section 11 to have
+    them erased.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">09</span> Children</h2>
+    <p>The app is meant for financial record keeping and is not directed at children under 13.
+    We do not collect personal data from anyone.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">10</span> Changes</h2>
+    <p>This policy may be updated. Changes will be published on this page with a new
+    effective date.</p>
+  </section>
+
+  <section>
+    <h2><span class="n">11</span> Contact</h2>
+    <p>Questions: <a href="mailto:abuustoz@gmail.com">abuustoz@gmail.com</a></p>
+  </section>
+</div>
+
+  <hr>
+  <footer>
+    <p>© 2026 Deptor</p>
+    <p>Dasturchi / Developer: <a href="https://abuelectric.uz" target="_blank" rel="noopener">abuelectric.uz</a></p>
+  </footer>
+</div>
+</body>
+</html>

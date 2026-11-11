@@ -3,7 +3,15 @@
 //   "App signing" sertifikati SHA-256 qiymati.
 const UPLOAD_SHA = 'A8:6B:B6:58:11:2F:0C:02:20:99:A3:12:69:10:33:6B:2C:86:06:81:66:75:43:26:62:4B:5C:3D:7D:48:A7:A2';
 
+const fs = require('fs');
+const path = require('path');
+
 function mount(app) {
+  // Maxfiylik siyosati (Google Play uchun): /deptor/privacy
+  app.get(['/deptor/privacy', '/deptor/privacy/'], (req, res) => {
+    res.type('html').send(fs.readFileSync(path.join(__dirname, 'privacy.html'), 'utf8'));
+  });
+
   app.get('/.well-known/assetlinks.json', (req, res) => {
     const extra = (process.env.DP_ASSETLINKS_SHA || '').split(',').map((s) => s.trim()).filter(Boolean);
     res.json([{
