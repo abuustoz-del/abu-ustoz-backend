@@ -8,6 +8,9 @@ const path = require('path');
 
 function mount(app) {
   // Maxfiylik siyosati (Google Play uchun): /deptor/privacy
+  app.get(['/deptor/delete-account', '/deptor/delete-account/'], (req, res) => {
+    res.type('html').send(fs.readFileSync(path.join(__dirname, 'delete-account.html'), 'utf8'));
+  });
   app.get(['/deptor/privacy', '/deptor/privacy/'], (req, res) => {
     res.type('html').send(fs.readFileSync(path.join(__dirname, 'privacy.html'), 'utf8'));
   });
